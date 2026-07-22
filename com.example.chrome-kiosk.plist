@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.chrome-kiosk</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/user/Library/Application Support/Chrome Kiosk/chrome-kiosk.sh</string>
+        <string>https://www.canva.com/design/DAHOJXEvb9o/x3tAF2xvq3cvdreokETpfA/watch?utm_content=DAHOJXEvb9o&amp;utm_campaign=designshare&amp;utm_medium=link2&amp;utm_source=uniquelinks&amp;utlId=he38cf48331</string>
+        <string>200</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/chrome-kiosk.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/chrome-kiosk-error.log</string>
+</dict>
+</plist>
