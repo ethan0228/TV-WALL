@@ -2,6 +2,8 @@
 
 本系統會在使用者登入後，以 Google Chrome kiosk 模式自動播放 Canva `/watch` 網址，偵測簡報長度並在播放結束後重新載入。安裝時需要管理員密碼；日常執行使用一般使用者權限。
 
+Windows 10／11 使用者請參閱 [`windows/README-Windows.md`](windows/README-Windows.md)。
+
 ## 系統需求
 
 - macOS，並以要使用 TV-WALL 的一般使用者登入。
