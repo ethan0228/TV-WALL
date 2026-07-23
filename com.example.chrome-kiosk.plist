@@ -6,8 +6,8 @@
     <string>com.example.chrome-kiosk</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/user/Library/Application Support/Chrome Kiosk/chrome-kiosk.sh</string>
-        <string>https://www.canva.com/design/DAHOJXEvb9o/x3tAF2xvq3cvdreokETpfA/watch?utm_content=DAHOJXEvb9o&amp;utm_campaign=designshare&amp;utm_medium=link2&amp;utm_source=uniquelinks&amp;utlId=he38cf48331</string>
+        <string>CHROME_KIOSK_SCRIPT_PATH</string>
+        <string>https://www.canva.com/design/EXAMPLE/watch</string>
         <string>200</string>
     </array>
     <key>RunAtLoad</key>
