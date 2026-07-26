@@ -152,6 +152,8 @@ function macReadme(device: DeviceRecord, controlUrl: string) {
 
 > 安裝包內的 \`device-config.json\` 含有此節點的 API 金鑰。請只交給負責安裝的人員，安裝完成後將 ZIP 與解壓縮資料夾安全刪除，不要寄到公開群組或上傳到公開空間。
 
+${transportSecurityNotice(controlUrl)}
+
 ## 2. 安裝前準備
 
 1. 使用要長期播放電視牆的「一般使用者帳號」登入 Mac。
@@ -272,6 +274,8 @@ function windowsReadme(device: DeviceRecord, controlUrl: string) {
 - 產生時間：${new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}
 
 > 安裝包內的 \`device-config.json\` 含有此節點的 API 金鑰。請只交給負責安裝的人員，安裝完成後將 ZIP 與解壓縮資料夾安全刪除，不要寄到公開群組或上傳到公開空間。
+
+${transportSecurityNotice(controlUrl)}
 
 ## 2. 安裝前準備
 
@@ -404,4 +408,10 @@ function shellComment(value: string) {
 
 function markdownText(value: string) {
   return value.replaceAll("\n", " ").replaceAll("\r", " ").replaceAll("`", "＇");
+}
+
+function transportSecurityNotice(controlUrl: string) {
+  return controlUrl.startsWith("http://")
+    ? "> 此後台使用區域網路 HTTP。請只在可信任、未對外開放的內部網路使用；不要把管理後台連接埠轉發到 Internet。"
+    : "> 此後台使用 HTTPS 加密連線。";
 }

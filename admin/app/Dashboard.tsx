@@ -324,7 +324,9 @@ export default function Dashboard({
                 <strong>{administrator.name}</strong>
                 <small>系統管理員</small>
               </div>
-              <a href={signOutPath}>登出</a>
+              <form action={signOutPath} method="post">
+                <button type="submit">登出</button>
+              </form>
             </div>
           </div>
         </header>

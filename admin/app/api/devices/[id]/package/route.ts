@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { requireApiAdmin } from "@/app/admin-auth";
 import { buildInstallationPackage } from "@/app/install-package";
 import { getDevice, getDeviceApiKey } from "@/db/repository";
@@ -21,10 +22,17 @@ export async function GET(request: Request, context: RouteContext) {
     if (!apiKey) {
       return Response.json({ error: "Device not found" }, { status: 404 });
     }
+    const controlUrl = (env.PUBLIC_CONTROL_URL || new URL(request.url).origin)
+      .trim()
+      .replace(/\/+$/, "");
+    const parsedControlUrl = new URL(controlUrl);
+    if (!["http:", "https:"].includes(parsedControlUrl.protocol)) {
+      throw new Error("PUBLIC_CONTROL_URL must use HTTP or HTTPS");
+    }
     const { bytes, filename } = buildInstallationPackage(
       device,
       apiKey,
-      new URL(request.url).origin,
+      controlUrl,
     );
     return new Response(bytes, {
       headers: {

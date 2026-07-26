@@ -5,17 +5,24 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("uses D1 and protects the administration surface", async () => {
-  const [hosting, page, auth, heartbeat] = await Promise.all([
+  const [hosting, page, auth, localAuth, login, heartbeat] = await Promise.all([
     readFile(new URL(".openai/hosting.json", root), "utf8"),
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/admin-auth.ts", root), "utf8"),
+    readFile(new URL("app/local-auth.ts", root), "utf8"),
+    readFile(new URL("app/api/auth/login/route.ts", root), "utf8"),
     readFile(new URL("app/api/agent/heartbeat/route.ts", root), "utf8"),
   ]);
 
   assert.match(hosting, /"d1":\s*"DB"/);
   assert.match(page, /getAdminIdentity/);
-  assert.match(page, /chatGPTSignInPath/);
+  assert.match(page, /adminSignInPath/);
   assert.match(auth, /ADMIN_EMAILS/);
+  assert.match(auth, /getLocalAuthConfig/);
+  assert.match(localAuth, /PBKDF2/);
+  assert.match(localAuth, /HMAC/);
+  assert.match(localAuth, /SameSite=Strict/);
+  assert.match(login, /MAX_ATTEMPTS/);
   assert.match(heartbeat, /authorization/);
   assert.match(heartbeat, /findDeviceByKeyHash/);
 });
@@ -34,6 +41,7 @@ test("supports device CRUD and operational status", async () => {
   assert.match(itemRoute, /export async function PATCH/);
   assert.match(itemRoute, /export async function DELETE/);
   assert.match(packageRoute, /buildInstallationPackage/);
+  assert.match(packageRoute, /PUBLIC_CONTROL_URL/);
   assert.match(packageRoute, /application\/zip/);
   assert.match(dashboard, /新增電視牆節點/);
   assert.match(dashboard, /下載完整安裝包/);
@@ -62,4 +70,23 @@ test("generates secure platform installation packages with full instructions", a
   assert.match(repository, /api_key_ciphertext/);
   assert.match(macInstaller, /DEVICE_API_KEY/);
   assert.match(windowsInstaller, /DeviceApiKey/);
+});
+
+test("provides a persistent macOS local installation workflow", async () => {
+  const projectRoot = new URL("../../", import.meta.url);
+  const [installer, runner, uninstaller, documentation] = await Promise.all([
+    readFile(new URL("install-local-admin.sh", projectRoot), "utf8"),
+    readFile(new URL("admin/scripts/run-local-admin.sh", projectRoot), "utf8"),
+    readFile(new URL("uninstall-local-admin.sh", projectRoot), "utf8"),
+    readFile(new URL("LOCAL-INSTALL-macOS.md", projectRoot), "utf8"),
+  ]);
+
+  assert.match(installer, /com\.tvwall\.admin/);
+  assert.match(installer, /LOCAL_ADMIN_PASSWORD_HASH/);
+  assert.match(installer, /PUBLIC_CONTROL_URL/);
+  assert.match(runner, /--persist-to/);
+  assert.match(runner, /0\.0\.0\.0/);
+  assert.match(uninstaller, /--purge/);
+  assert.match(documentation, /127\.0\.0\.1:3100/);
+  assert.match(documentation, /備份與還原/);
 });

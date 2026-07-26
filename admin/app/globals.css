@@ -350,13 +350,22 @@ button {
   font-size: 9px;
 }
 
-.admin-menu a {
+.admin-menu form {
+  margin: 0;
+}
+
+.admin-menu a,
+.admin-menu form button {
+  border: 0;
+  background: transparent;
+  padding: 0;
   color: var(--muted-2);
   font-size: 10px;
   text-decoration: none;
 }
 
-.admin-menu a:hover {
+.admin-menu a:hover,
+.admin-menu form button:hover {
   color: var(--text);
 }
 
@@ -1319,6 +1328,74 @@ td small,
   text-decoration: none;
 }
 
+.login-card {
+  text-align: left;
+}
+
+.login-card .access-mark,
+.login-card > .eyebrow,
+.login-card > h1,
+.login-card > p,
+.local-login-note {
+  text-align: center;
+}
+
+.login-error {
+  margin-bottom: 17px;
+  border: 1px solid rgba(255, 107, 117, 0.3);
+  border-radius: 9px;
+  background: rgba(255, 107, 117, 0.08);
+  padding: 10px 12px;
+  color: #ffc3c8;
+  font-size: 11px;
+  text-align: center;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.login-form label span {
+  color: #aab8c4;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.login-form input {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid #2c3b49;
+  border-radius: 9px;
+  outline: 0;
+  background: #0b1117;
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.login-form input:focus {
+  border-color: rgba(65, 213, 154, 0.65);
+  box-shadow: 0 0 0 3px rgba(65, 213, 154, 0.08);
+}
+
+.login-form .primary-button {
+  justify-content: center;
+  margin-top: 3px;
+}
+
+.local-login-note {
+  display: block;
+  margin-top: 18px;
+  color: var(--muted-2);
+  font-size: 9px;
+}
+
 @media (max-width: 1100px) {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1377,6 +1454,7 @@ td small,
 
   .admin-menu div,
   .admin-menu a,
+  .admin-menu form,
   .icon-button {
     display: none;
   }

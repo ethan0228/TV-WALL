@@ -1,4 +1,8 @@
 import { getChatGPTUser, type ChatGPTUser } from "./chatgpt-auth";
+import {
+  getLocalAdminUsername,
+  getLocalAuthConfig,
+} from "./local-auth";
 
 export type AdminIdentity = {
   user: ChatGPTUser | null;
@@ -7,6 +11,23 @@ export type AdminIdentity = {
 };
 
 export async function getAdminIdentity(): Promise<AdminIdentity> {
+  const localConfig = getLocalAuthConfig();
+  if (localConfig) {
+    const username = await getLocalAdminUsername(localConfig);
+    if (!username) {
+      return { user: null, authenticated: false, authorized: false };
+    }
+    return {
+      user: {
+        displayName: username,
+        email: `${username}@tv-wall.local`,
+        fullName: username,
+      },
+      authenticated: true,
+      authorized: true,
+    };
+  }
+
   const user = await getChatGPTUser();
   const isDevelopment = process.env.NODE_ENV !== "production";
 
@@ -38,6 +59,21 @@ export async function getAdminIdentity(): Promise<AdminIdentity> {
   };
 }
 
+export function adminSignInPath(returnTo: string) {
+  if (getLocalAuthConfig()) {
+    return `/login?return_to=${encodeURIComponent(safeReturnTo(returnTo))}`;
+  }
+  return `/signin-with-chatgpt?return_to=${encodeURIComponent(
+    safeReturnTo(returnTo),
+  )}`;
+}
+
+export function adminSignOutPath() {
+  return getLocalAuthConfig()
+    ? "/api/auth/logout"
+    : "/signout-with-chatgpt?return_to=%2F";
+}
+
 export async function requireApiAdmin() {
   const identity = await getAdminIdentity();
   if (!identity.authenticated) {
@@ -53,4 +89,21 @@ export async function requireApiAdmin() {
     };
   }
   return { identity, response: null };
+}
+
+export function safeReturnTo(value: string) {
+  if (!value.startsWith("/") || value.startsWith("//")) return "/";
+  try {
+    const url = new URL(value, "https://tv-wall.local");
+    if (url.origin !== "https://tv-wall.local") return "/";
+    if (
+      url.pathname === "/login" ||
+      url.pathname.startsWith("/api/auth/")
+    ) {
+      return "/";
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
 }

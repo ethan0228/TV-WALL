@@ -71,6 +71,8 @@ sudo ./install-for-user.sh "https://www.canva.com/design/新的設計代碼/watc
 
 若節點已連接管理後台，管理者可以直接在後台更換播放網址、備援秒數或停用節點，不需重新安裝。
 
+本機管理後台可使用 `http://區網IP:3100`；HTTP 只應用於可信任、未對外開放的內部網路。跨據點、訪客 Wi-Fi 或 Internet 連線請使用 HTTPS 或 VPN。
+
 ## 移除
 
 在專案資料夾執行：

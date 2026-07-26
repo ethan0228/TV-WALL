@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getAdminIdentity } from "./admin-auth";
 import {
-  chatGPTSignInPath,
-  chatGPTSignOutPath,
-} from "./chatgpt-auth";
+  adminSignInPath,
+  adminSignOutPath,
+  getAdminIdentity,
+} from "./admin-auth";
 import Dashboard from "./Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export default async function Home() {
   const identity = await getAdminIdentity();
 
   if (!identity.authenticated) {
-    redirect(chatGPTSignInPath("/"));
+    redirect(adminSignInPath("/"));
   }
 
   if (!identity.authorized || !identity.user) {
@@ -32,7 +32,7 @@ export default async function Home() {
             目前登入的帳號 <strong>{identity.user?.email}</strong>{" "}
             不在管理員名單中。請改用已授權的管理帳號登入。
           </p>
-          <a className="primary-button" href={chatGPTSignOutPath("/")}>
+          <a className="primary-button" href={adminSignOutPath()}>
             登出並切換帳號
           </a>
         </section>
@@ -46,7 +46,7 @@ export default async function Home() {
         name: identity.user.displayName,
         email: identity.user.email,
       }}
-      signOutPath={chatGPTSignOutPath("/")}
+      signOutPath={adminSignOutPath()}
     />
   );
 }

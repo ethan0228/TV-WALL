@@ -40,8 +40,8 @@ if ! [[ "$REFRESH_SECONDS" =~ ^[0-9]+$ ]] || (( REFRESH_SECONDS < 15 )); then
     exit 2
 fi
 if [[ -n "$CONTROL_URL" || -n "$DEVICE_API_KEY" ]]; then
-    if [[ -z "$CONTROL_URL" || -z "$DEVICE_API_KEY" || ! "$CONTROL_URL" =~ ^https:// ]]; then
-        echo "管理後台網址與裝置 API 金鑰必須一起提供，且網址必須使用 https://。" >&2
+    if [[ -z "$CONTROL_URL" || -z "$DEVICE_API_KEY" || ! "$CONTROL_URL" =~ ^https?:// ]]; then
+        echo "管理後台網址與裝置 API 金鑰必須一起提供，且網址必須使用 http:// 或 https://。" >&2
         exit 2
     fi
 fi

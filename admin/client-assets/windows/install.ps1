@@ -95,12 +95,12 @@ if ($ControlUrl -or $DeviceApiKey) {
     }
     try {
         $controlUri = [Uri]$ControlUrl
-        if (-not $controlUri.IsAbsoluteUri -or $controlUri.Scheme -ne 'https') {
+        if (-not $controlUri.IsAbsoluteUri -or $controlUri.Scheme -notin @('http', 'https')) {
             throw
         }
     }
     catch {
-        throw '管理後台網址必須是有效的 https:// 網址。'
+        throw '管理後台網址必須是有效的 http:// 或 https:// 網址。'
     }
 }
 

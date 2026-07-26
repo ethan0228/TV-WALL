@@ -11,6 +11,17 @@ TV-WALL Control 是電視牆節點的管理後台，提供：
 - 保存最近 30 天心跳事件與 24 小時回報統計。
 - 讓客戶端透過 `/api/agent/heartbeat` 回報狀態並取得最新播放設定。
 
+## 建議：安裝在本機 Mac
+
+不需要 OpenAI Sites 或 Cloudflare 帳號。從專案根目錄執行：
+
+```bash
+chmod +x install-local-admin.sh uninstall-local-admin.sh
+./install-local-admin.sh
+```
+
+安裝程式會建立本機管理帳號、密碼雜湊、加密密鑰、持久化 D1/SQLite 資料庫及 macOS LaunchAgent。詳細步驟請參閱 [`../LOCAL-INSTALL-macOS.md`](../LOCAL-INSTALL-macOS.md)。
+
 ## 環境變數
 
 正式環境必須設定：
@@ -21,6 +32,18 @@ DEVICE_CREDENTIAL_SECRET=請使用至少32字元的隨機字串
 ```
 
 只有清單中的 ChatGPT 登入信箱可以存取管理頁面與管理 API。本機開發環境會使用模擬管理員，不需登入。
+
+本機安裝模式不使用 ChatGPT 登入，改用：
+
+```text
+LOCAL_ADMIN_USERNAME=admin
+LOCAL_ADMIN_PASSWORD_HASH=pbkdf2_sha256$...
+LOCAL_SESSION_SECRET=至少32字元的隨機字串
+DEVICE_CREDENTIAL_SECRET=至少32字元的隨機字串
+PUBLIC_CONTROL_URL=http://本機區網IP:3100
+```
+
+`install-local-admin.sh` 會安全地自動建立這些設定，使用者不需要手動產生。
 
 `DEVICE_CREDENTIAL_SECRET` 用 AES-GCM 加密可重新產生安裝包所需的裝置金鑰。正式環境必須以密鑰形式設定並長期保存；變更或遺失後，既有節點的金鑰將無法解密，必須為節點更新 API 金鑰並重新安裝。資料庫另存 SHA-256 雜湊供心跳驗證，不會以明文保存金鑰。
 
