@@ -13,12 +13,20 @@ Windows 10／11 使用者請參閱 [`windows/README-Windows.md`](windows/README-
 
 ## 安裝
 
+建議方式：在管理後台新增或編輯 macOS 節點，下載自動產生的 ZIP，解壓縮後依 `README-INSTALL-zh-TW.md` 執行 `bash ./install.command`。套件已包含播放網址、管理後台與裝置金鑰。
+
+下列方式保留給未使用管理後台或需要手動安裝的情況：
+
 1. 從 GitHub 下載或 clone `TV-WALL`，在終端機進入下載後的資料夾。
 2. 執行以下指令；第一個參數是 Canva `/watch` 網址，第二個參數是偵測失敗時的備援播放秒數（至少 15 秒）：
 
    ```sh
    chmod +x install-for-user.sh uninstall-for-user.sh
-   sudo ./install-for-user.sh "https://www.canva.com/design/你的設計代碼/watch" 200
+   sudo ./install-for-user.sh \
+     "https://www.canva.com/design/你的設計代碼/watch" \
+     200 \
+     "https://你的管理後台網址" \
+     "tvw_後台產生的裝置API金鑰"
    ```
 
 安裝器會自動辨識執行 `sudo` 的一般使用者，不需要修改使用者名稱或家目錄。它會：
@@ -27,6 +35,7 @@ Windows 10／11 使用者請參閱 [`windows/README-Windows.md`](windows/README-
 - 從 `Chrome Kiosk Player.applescript` 編譯 `~/Applications/Chrome Kiosk Player.app`。
 - 依目前使用者、網址與備援秒數產生 `~/Library/LaunchAgents/com.example.chrome-kiosk.plist`。
 - 若目前已有桌面登入工作階段，立即啟動；否則在下次登入時啟動。
+- 連線管理後台，每 30 秒回報使用狀態並取得最新播放設定。
 
 ## 第一次啟動的 macOS 權限
 
@@ -59,6 +68,8 @@ tail -f /tmp/chrome-kiosk.log /tmp/chrome-kiosk-error.log /tmp/chrome-kiosk-chro
 ```sh
 sudo ./install-for-user.sh "https://www.canva.com/design/新的設計代碼/watch" 200
 ```
+
+若節點已連接管理後台，管理者可以直接在後台更換播放網址、備援秒數或停用節點，不需重新安裝。
 
 ## 移除
 

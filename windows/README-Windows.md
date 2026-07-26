@@ -12,6 +12,10 @@ Windows 版本會在使用者登入後，以 Google Chrome 或 Microsoft Edge ki
 
 ## 安裝
 
+建議方式：在管理後台新增或編輯 Windows 節點，下載自動產生的 ZIP，完整解壓縮後按兩下 `install.cmd`。UAC 會要求一次系統管理員授權，之後播放器以一般使用者權限執行。ZIP 內的 `README-INSTALL-zh-TW.md` 有完整圖文式步驟、驗證、更新、移除與疑難排解說明。
+
+下列方式保留給未使用管理後台或需要手動安裝的情況：
+
 1. 下載或 clone `TV-WALL`，進入 `windows` 資料夾。
 2. 以系統管理員身分開啟 Windows PowerShell。
 3. 執行：
@@ -20,10 +24,14 @@ Windows 版本會在使用者登入後，以 Google Chrome 或 Microsoft Edge ki
    Set-ExecutionPolicy -Scope Process Bypass
    .\install.ps1 `
      -Url "https://www.canva.com/design/你的設計代碼/watch" `
-     -FallbackSeconds 200
+     -FallbackSeconds 200 `
+     -ControlUrl "https://你的管理後台網址" `
+     -DeviceApiKey "tvw_後台產生的裝置API金鑰"
    ```
 
 安裝器會辨識目前桌面登入者，即使 UAC 使用另一組管理員認證，也會將檔案安裝到播放使用者的 `%LOCALAPPDATA%\TV-WALL`。它會優先使用 Chrome，找不到時改用 Edge，並建立名為 `TV-WALL` 的登入排程工作。
+
+連接管理後台後，節點每 30 秒回報一次目前狀態。管理者可以在後台更換播放網址、備援秒數或停用節點，播放器會自動取得新設定。
 
 ## 驗證
 

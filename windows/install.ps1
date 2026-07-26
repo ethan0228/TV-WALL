@@ -5,7 +5,11 @@ param(
     [string]$Url,
 
     [ValidateRange(15, 86400)]
-    [int]$FallbackSeconds = 200
+    [int]$FallbackSeconds = 200,
+
+    [string]$ControlUrl = '',
+
+    [string]$DeviceApiKey = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -85,6 +89,21 @@ catch {
     throw '播放網址必須是有效的 https:// 網址。'
 }
 
+if ($ControlUrl -or $DeviceApiKey) {
+    if (-not $ControlUrl -or -not $DeviceApiKey) {
+        throw '管理後台網址與裝置 API 金鑰必須一起提供。'
+    }
+    try {
+        $controlUri = [Uri]$ControlUrl
+        if (-not $controlUri.IsAbsoluteUri -or $controlUri.Scheme -ne 'https') {
+            throw
+        }
+    }
+    catch {
+        throw '管理後台網址必須是有效的 https:// 網址。'
+    }
+}
+
 $target = Get-InteractiveUser
 $browserPath = Find-Browser -ProfilePath $target.ProfilePath
 $installRoot = Join-Path $target.ProfilePath 'AppData\Local\TV-WALL'
@@ -111,6 +130,9 @@ foreach ($file in $requiredFiles) {
     BrowserPath = $browserPath
     BrowserProfile = $profileRoot
     DebugPort = 9222
+    ControlUrl = $ControlUrl.TrimEnd('/')
+    DeviceApiKey = $DeviceApiKey
+    Enabled = $true
 } | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding UTF8
 
 $accessRule = '{0}:(OI)(CI)M' -f $target.Account
@@ -133,4 +155,7 @@ Start-ScheduledTask -TaskName $TaskName
 Write-Host "安裝完成：$($target.Account)"
 Write-Host "瀏覽器：$browserPath"
 Write-Host "播放網址：$Url"
+if ($ControlUrl) {
+    Write-Host "管理後台：$($ControlUrl.TrimEnd('/'))"
+}
 Write-Host "Windows 登入後會自動啟動 TV-WALL。"

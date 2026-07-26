@@ -9,6 +9,8 @@
         <string>CHROME_KIOSK_SCRIPT_PATH</string>
         <string>https://www.canva.com/design/EXAMPLE/watch</string>
         <string>200</string>
+        <string></string>
+        <string></string>
     </array>
     <key>RunAtLoad</key>
     <true/>

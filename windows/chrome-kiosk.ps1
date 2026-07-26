@@ -6,6 +6,8 @@ $InstallRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $InstallRoot 'config.json'
 $DetectorPath = Join-Path $InstallRoot 'detect-canva-duration.ps1'
 $LogPath = Join-Path $InstallRoot 'tv-wall.log'
+$AppVersion = '1.2.0'
+$StartedAt = Get-Date
 
 function Write-Log {
     param([string]$Message)
@@ -61,17 +63,71 @@ function Send-PlaybackKey {
     }
 }
 
+function Sync-Control {
+    param(
+        $Config,
+        [string]$Status = 'playing',
+        [string]$ErrorMessage = ''
+    )
+
+    if (-not $Config.ControlUrl -or -not $Config.DeviceApiKey) {
+        return $false
+    }
+
+    try {
+        $previousUrl = [string]$Config.Url
+        $response = Invoke-RestMethod `
+            -Uri "$($Config.ControlUrl.TrimEnd('/'))/api/agent/heartbeat" `
+            -Method Post `
+            -Headers @{ Authorization = "Bearer $($Config.DeviceApiKey)" } `
+            -Body @{
+                status = $Status
+                current_url = $Config.Url
+                app_version = $AppVersion
+                os_version = [Environment]::OSVersion.VersionString
+                uptime_seconds = [Math]::Floor(((Get-Date) - $StartedAt).TotalSeconds)
+                error_message = $ErrorMessage
+            } `
+            -TimeoutSec 10
+
+        if ($response.configuration) {
+            $Config.Enabled = [bool]$response.configuration.enabled
+            $Config.Url = [string]$response.configuration.playbackUrl
+            $Config.FallbackSeconds = [int]$response.configuration.fallbackSeconds
+            return $Config.Url -ne $previousUrl
+        }
+    }
+    catch {
+        Write-Log "管理後台連線失敗：$($_.Exception.Message)"
+    }
+    return $false
+}
+
 if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
     throw "找不到設定檔：$ConfigPath"
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
+if ($null -eq $config.Enabled) {
+    $config | Add-Member -NotePropertyName Enabled -NotePropertyValue $true
+}
 if (-not (Test-Path -LiteralPath $config.BrowserPath -PathType Leaf)) {
     throw "找不到瀏覽器：$($config.BrowserPath)"
 }
 
 try {
     while ($true) {
+        $null = Sync-Control -Config $config -Status 'loading'
+        if (-not $config.Enabled) {
+            Stop-KioskBrowser -ProfilePath $config.BrowserProfile
+            Write-Log '此節點已由管理後台停用，等待重新啟用。'
+            while (-not $config.Enabled) {
+                Start-Sleep -Seconds 30
+                $null = Sync-Control -Config $config -Status 'disabled'
+            }
+            Write-Log '節點已由管理後台重新啟用。'
+        }
+
         Stop-KioskBrowser -ProfilePath $config.BrowserProfile
         Start-Sleep -Seconds 2
         $browser = Start-KioskBrowser -Config $config
@@ -89,13 +145,25 @@ try {
         }
 
         Send-PlaybackKey -ProfilePath $config.BrowserProfile
-        Start-Sleep -Seconds $sleepSeconds
+
+        $remaining = $sleepSeconds
+        while ($remaining -gt 0) {
+            $step = [Math]::Min(30, $remaining)
+            Start-Sleep -Seconds $step
+            $remaining -= $step
+            $configurationChanged = Sync-Control -Config $config -Status 'playing'
+            if (-not $config.Enabled -or $configurationChanged) {
+                break
+            }
+        }
     }
 }
 catch {
     Write-Log "錯誤：$($_.Exception.Message)"
+    $null = Sync-Control -Config $config -Status 'error' -ErrorMessage $_.Exception.Message
     throw
 }
 finally {
+    $null = Sync-Control -Config $config -Status 'offline'
     Stop-KioskBrowser -ProfilePath $config.BrowserProfile
 }
