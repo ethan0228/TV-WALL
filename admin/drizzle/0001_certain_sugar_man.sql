@@ -1,0 +1,1 @@
+ALTER TABLE `devices` ADD `api_key_ciphertext` text;
