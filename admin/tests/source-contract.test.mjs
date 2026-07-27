@@ -70,6 +70,9 @@ test("generates secure platform installation packages with full instructions", a
   assert.match(repository, /api_key_ciphertext/);
   assert.match(macInstaller, /DEVICE_API_KEY/);
   assert.match(windowsInstaller, /DeviceApiKey/);
+  assert.match(builder, /install-elevated\.ps1/);
+  assert.match(builder, /-Wait/);
+  assert.match(builder, /TV-WALL 安裝失敗/);
 });
 
 test("provides a persistent macOS local installation workflow", async () => {

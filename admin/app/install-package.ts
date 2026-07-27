@@ -106,20 +106,69 @@ function windowsFiles(
   configuration: string,
 ) {
   const configuredInstaller = `$ErrorActionPreference = 'Stop'
-$installer = Join-Path $PSScriptRoot 'install.ps1'
-& $installer -Url ${powershellQuote(device.playbackUrl)} -FallbackSeconds ${
-    device.fallbackSeconds
-  } -ControlUrl ${powershellQuote(controlUrl)} -DeviceApiKey ${powershellQuote(apiKey)}
-Write-Host ''
-Write-Host 'TV-WALL 已安裝完成。請回到管理後台確認節點狀態。'
+try {
+    $installer = Join-Path $PSScriptRoot 'install.ps1'
+    & $installer -Url ${powershellQuote(device.playbackUrl)} -FallbackSeconds ${
+      device.fallbackSeconds
+    } -ControlUrl ${powershellQuote(controlUrl)} -DeviceApiKey ${powershellQuote(apiKey)}
+    if ($LASTEXITCODE -ne 0) {
+        throw "install.ps1 結束代碼：$LASTEXITCODE"
+    }
+    Write-Host ''
+    Write-Host 'TV-WALL 已安裝完成。請回到管理後台確認節點狀態。' -ForegroundColor Green
+}
+catch {
+    Write-Host ''
+    Write-Host 'TV-WALL 安裝失敗：' -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Read-Host '請記下以上訊息，按 Enter 關閉視窗'
+    exit 1
+}
 Read-Host '按 Enter 關閉視窗'
+`;
+  const elevatedInstaller = `$ErrorActionPreference = 'Stop'
+$configuredInstaller = Join-Path $PSScriptRoot 'install-configured.ps1'
+
+try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    $isAdministrator = $principal.IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator
+    )
+
+    if ($isAdministrator) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $configuredInstaller
+        exit $LASTEXITCODE
+    }
+
+    $arguments = @(
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        ('"{0}"' -f $configuredInstaller)
+    )
+    $process = Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -Wait -PassThru
+    exit $process.ExitCode
+}
+catch {
+    Write-Host ''
+    Write-Host '無法啟動 TV-WALL 系統管理員安裝程式：' -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Read-Host '按 Enter 關閉視窗'
+    exit 1
+}
 `;
   const launcher = [
     "@echo off",
     "chcp 65001 >nul",
     "echo TV-WALL 安裝程式即將要求 Windows 系統管理員權限。",
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process powershell.exe -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0install-configured.ps1')\"",
-    "if errorlevel 1 pause",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%~dp0install-elevated.ps1\"",
+    "if errorlevel 1 (",
+    "  echo.",
+    "  echo TV-WALL 安裝未完成，請查看上方錯誤訊息。",
+    "  pause",
+    ")",
     "",
   ].join("\r\n");
 
@@ -127,6 +176,7 @@ Read-Host '按 Enter 關閉視窗'
     "README-INSTALL-zh-TW.md": windowsReadme(device, controlUrl),
     "device-config.json": configuration,
     "install.cmd": launcher,
+    "install-elevated.ps1": elevatedInstaller,
     "install-configured.ps1": configuredInstaller,
     "install.ps1": windowsInstall,
     "chrome-kiosk.ps1": windowsKiosk,
@@ -290,7 +340,7 @@ ${transportSecurityNotice(controlUrl)}
 
 1. 在解壓縮後的資料夾中，按兩下 \`install.cmd\`。
 2. Windows 顯示「使用者帳戶控制」時，確認發行來源為這台電腦上的檔案，選擇「是」，必要時輸入管理員帳號密碼。
-3. 等待 PowerShell 視窗顯示「安裝完成」。
+3. 等待 PowerShell 視窗顯示「TV-WALL 已安裝完成」。安裝程式現在會等待整個安裝流程結束；若失敗，視窗不會自動關閉，請記下紅色錯誤訊息。
 4. 按 Enter 關閉安裝視窗。
 
 若公司政策禁止執行 CMD，可使用替代方式：
@@ -367,6 +417,8 @@ ${transportSecurityNotice(controlUrl)}
 ### 播放器沒有自動啟動
 
 開啟工作排程器，找到 \`TV-WALL\` 後選擇「執行」。確認工作是由目前桌面使用者觸發，而非另一個管理員帳號。若仍失敗，重新執行安裝包。
+
+如果工作排程器內完全找不到 \`TV-WALL\`，代表安裝並未完成。請重新下載最新安裝包、完整解壓縮後再次執行 \`install.cmd\`，並確認最後出現綠色的「TV-WALL 已安裝完成」訊息。
 
 ### Canva 要求登入或內容無法公開播放
 
