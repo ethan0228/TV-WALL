@@ -72,6 +72,8 @@ test("generates secure platform installation packages with full instructions", a
   assert.match(windowsInstaller, /DeviceApiKey/);
   assert.match(builder, /install-elevated\.ps1/);
   assert.match(builder, /-Wait/);
+  assert.match(builder, /-EncodedCommand/);
+  assert.match(builder, /install-result\.log/);
   assert.match(builder, /TV-WALL 安裝失敗/);
 });
 

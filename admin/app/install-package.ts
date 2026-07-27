@@ -106,7 +106,16 @@ function windowsFiles(
   configuration: string,
 ) {
   const configuredInstaller = `$ErrorActionPreference = 'Stop'
+$resultLog = Join-Path $PSScriptRoot 'install-result.log'
+
+function Write-InstallResult {
+    param([string]$Message)
+    $line = '{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), $Message
+    Add-Content -LiteralPath $resultLog -Value $line -Encoding UTF8
+}
+
 try {
+    Write-InstallResult '開始執行 install-configured.ps1。'
     $installer = Join-Path $PSScriptRoot 'install.ps1'
     & $installer -Url ${powershellQuote(device.playbackUrl)} -FallbackSeconds ${
       device.fallbackSeconds
@@ -114,13 +123,17 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "install.ps1 結束代碼：$LASTEXITCODE"
     }
+    Write-InstallResult 'install.ps1 已成功完成。'
     Write-Host ''
     Write-Host 'TV-WALL 已安裝完成。請回到管理後台確認節點狀態。' -ForegroundColor Green
 }
 catch {
+    Write-InstallResult ("安裝失敗：{0}" -f $_.Exception.Message)
+    Write-InstallResult ("位置：{0}" -f $_.ScriptStackTrace)
     Write-Host ''
     Write-Host 'TV-WALL 安裝失敗：' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host "詳細記錄：$resultLog" -ForegroundColor Yellow
     Read-Host '請記下以上訊息，按 Enter 關閉視窗'
     exit 1
 }
@@ -128,8 +141,17 @@ Read-Host '按 Enter 關閉視窗'
 `;
   const elevatedInstaller = `$ErrorActionPreference = 'Stop'
 $configuredInstaller = Join-Path $PSScriptRoot 'install-configured.ps1'
+$resultLog = Join-Path $PSScriptRoot 'install-result.log'
+
+function Write-InstallResult {
+    param([string]$Message)
+    $line = '{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), $Message
+    Add-Content -LiteralPath $resultLog -Value $line -Encoding UTF8
+}
 
 try {
+    Set-Content -LiteralPath $resultLog -Value '' -Encoding UTF8
+    Write-InstallResult '開始執行 install-elevated.ps1。'
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     $isAdministrator = $principal.IsInRole(
@@ -137,24 +159,36 @@ try {
     )
 
     if ($isAdministrator) {
+        Write-InstallResult '目前已具有系統管理員權限。'
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $configuredInstaller
+        Write-InstallResult ("安裝子程序結束代碼：{0}" -f $LASTEXITCODE)
         exit $LASTEXITCODE
     }
 
+    Write-InstallResult '正在要求 UAC 系統管理員授權。'
+    $escapedPath = $configuredInstaller.Replace("'", "''")
+    $command = "& '$escapedPath'"
+    $encodedCommand = [Convert]::ToBase64String(
+        [Text.Encoding]::Unicode.GetBytes($command)
+    )
     $arguments = @(
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
-        '-File',
-        ('"{0}"' -f $configuredInstaller)
+        '-EncodedCommand',
+        $encodedCommand
     )
     $process = Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -Wait -PassThru
+    Write-InstallResult ("提權安裝子程序結束代碼：{0}" -f $process.ExitCode)
     exit $process.ExitCode
 }
 catch {
+    Write-InstallResult ("無法啟動提權安裝：{0}" -f $_.Exception.Message)
+    Write-InstallResult ("位置：{0}" -f $_.ScriptStackTrace)
     Write-Host ''
     Write-Host '無法啟動 TV-WALL 系統管理員安裝程式：' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host "詳細記錄：$resultLog" -ForegroundColor Yellow
     Read-Host '按 Enter 關閉視窗'
     exit 1
 }
@@ -167,6 +201,10 @@ catch {
     "if errorlevel 1 (",
     "  echo.",
     "  echo TV-WALL 安裝未完成，請查看上方錯誤訊息。",
+    "  if exist \"%~dp0install-result.log\" (",
+    "    echo.",
+    "    type \"%~dp0install-result.log\"",
+    "  )",
     "  pause",
     ")",
     "",
@@ -340,7 +378,7 @@ ${transportSecurityNotice(controlUrl)}
 
 1. 在解壓縮後的資料夾中，按兩下 \`install.cmd\`。
 2. Windows 顯示「使用者帳戶控制」時，確認發行來源為這台電腦上的檔案，選擇「是」，必要時輸入管理員帳號密碼。
-3. 等待 PowerShell 視窗顯示「TV-WALL 已安裝完成」。安裝程式現在會等待整個安裝流程結束；若失敗，視窗不會自動關閉，請記下紅色錯誤訊息。
+3. 等待 PowerShell 視窗顯示「TV-WALL 已安裝完成」。安裝程式會等待整個安裝流程結束；若失敗，CMD 視窗會顯示 \`install-result.log\` 的內容。
 4. 按 Enter 關閉安裝視窗。
 
 若公司政策禁止執行 CMD，可使用替代方式：
@@ -419,6 +457,14 @@ ${transportSecurityNotice(controlUrl)}
 開啟工作排程器，找到 \`TV-WALL\` 後選擇「執行」。確認工作是由目前桌面使用者觸發，而非另一個管理員帳號。若仍失敗，重新執行安裝包。
 
 如果工作排程器內完全找不到 \`TV-WALL\`，代表安裝並未完成。請重新下載最新安裝包、完整解壓縮後再次執行 \`install.cmd\`，並確認最後出現綠色的「TV-WALL 已安裝完成」訊息。
+
+安裝階段的固定記錄檔位於解壓縮資料夾內：
+
+\`\`\`text
+install-result.log
+\`\`\`
+
+若仍無法完成，請將此檔案內容提供給系統管理員。
 
 ### Canva 要求登入或內容無法公開播放
 
