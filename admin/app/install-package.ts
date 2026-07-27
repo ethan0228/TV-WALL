@@ -54,7 +54,11 @@ export function buildInstallationPackage(
       : windowsFiles(device, apiKey, normalizedControlUrl, configuration);
   const archive: PackageFileMap = {};
   for (const [name, contents] of Object.entries(files)) {
-    archive[`${folder}/${name}`] = strToU8(contents);
+    const packageContents =
+      device.platform === "windows" && name.toLowerCase().endsWith(".ps1")
+        ? `\uFEFF${contents}`
+        : contents;
+    archive[`${folder}/${name}`] = strToU8(packageContents);
   }
 
   return {

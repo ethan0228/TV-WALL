@@ -75,6 +75,7 @@ test("generates secure platform installation packages with full instructions", a
   assert.match(builder, /-EncodedCommand/);
   assert.match(builder, /install-result\.log/);
   assert.match(builder, /TV-WALL 安裝失敗/);
+  assert.ok(builder.includes("`\\uFEFF${contents}`"));
 });
 
 test("provides a persistent macOS local installation workflow", async () => {
