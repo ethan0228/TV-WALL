@@ -105,7 +105,7 @@ if [[ -z "$NODE_BIN" || -z "$NPM_BIN" || "$NODE_MAJOR" -lt 22 ]]; then
     }
     trap cleanup_download EXIT
 
-    echo "找不到合適的 Node.js，正在安裝 TV-WALL 專用 Node.js $NODE_VERSION…"
+    echo "找不到合適的 Node.js，正在安裝 TV-WALL 專用 Node.js ${NODE_VERSION}…"
     /usr/bin/curl -fL --retry 3 \
         "https://nodejs.org/dist/$NODE_VERSION/$NODE_ARCHIVE" \
         -o "$DOWNLOAD_DIR/$NODE_ARCHIVE"

@@ -84,6 +84,11 @@ test("provides a persistent macOS local installation workflow", async () => {
   assert.match(installer, /com\.tvwall\.admin/);
   assert.match(installer, /LOCAL_ADMIN_PASSWORD_HASH/);
   assert.match(installer, /PUBLIC_CONTROL_URL/);
+  assert.doesNotMatch(
+    installer,
+    /\$[A-Z_]+…/,
+    "shell variables next to Chinese punctuation must use braces",
+  );
   assert.match(runner, /--persist-to/);
   assert.match(runner, /0\.0\.0\.0/);
   assert.match(uninstaller, /--purge/);
