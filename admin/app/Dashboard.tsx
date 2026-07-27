@@ -95,6 +95,9 @@ export default function Dashboard({
     apiKey?: string;
   } | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [activeSection, setActiveSection] = useState<
+    "overview" | "devices" | "activity"
+  >("overview");
 
   const loadSummary = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -119,6 +122,13 @@ export default function Dashboard({
     const timer = window.setInterval(() => loadSummary(true), 20_000);
     return () => window.clearInterval(timer);
   }, [loadSummary]);
+
+  useEffect(() => {
+    const section = window.location.hash.slice(1);
+    if (section === "devices" || section === "activity") {
+      setActiveSection(section);
+    }
+  }, []);
 
   const filteredDevices = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -152,6 +162,15 @@ export default function Dashboard({
     });
     setEditingId(device.id);
     setModal("edit");
+  }
+
+  function goToSection(section: "overview" | "devices" | "activity") {
+    setActiveSection(section);
+    window.history.replaceState(null, "", `#${section}`);
+    document.getElementById(section)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
   async function downloadPackage(device: Device) {
@@ -276,19 +295,31 @@ export default function Dashboard({
         </div>
 
         <nav className="nav-list" aria-label="主要導覽">
-          <a className="nav-item active" href="#overview">
+          <button
+            className={`nav-item ${activeSection === "overview" ? "active" : ""}`}
+            type="button"
+            onClick={() => goToSection("overview")}
+          >
             <span className="nav-icon grid-icon" />
             營運總覽
-          </a>
-          <a className="nav-item" href="#devices">
+          </button>
+          <button
+            className={`nav-item ${activeSection === "devices" ? "active" : ""}`}
+            type="button"
+            onClick={() => goToSection("devices")}
+          >
             <span className="nav-icon screen-icon" />
-            電視牆節點
+            節點管理
             <b>{summary?.total ?? 0}</b>
-          </a>
-          <a className="nav-item" href="#activity">
+          </button>
+          <button
+            className={`nav-item ${activeSection === "activity" ? "active" : ""}`}
+            type="button"
+            onClick={() => goToSection("activity")}
+          >
             <span className="nav-icon pulse-icon" />
             即時動態
-          </a>
+          </button>
         </nav>
 
         <div className="sidebar-status">
@@ -390,6 +421,13 @@ export default function Dashboard({
               <button className="primary-button" type="button" onClick={openCreate}>
                 <span>＋</span> 新增節點
               </button>
+            </div>
+
+            <div className="management-hint">
+              <span aria-hidden="true">i</span>
+              <p>
+                按「新增節點」建立電視牆；既有節點可直接按右側「編輯」，更多選項包含下載安裝包、更新金鑰與刪除。
+              </p>
             </div>
 
             <div className="table-tools">
@@ -805,23 +843,25 @@ function DeviceRow({
         <small>{STATUS_LABELS[device.connectionStatus]}</small>
       </td>
       <td>
-        <details className="row-menu">
-          <summary aria-label={`管理 ${device.name}`}>•••</summary>
-          <div>
-            <button type="button" onClick={onEdit}>
-              編輯設定
-            </button>
-            <button type="button" onClick={onDownload}>
-              下載完整安裝包
-            </button>
-            <button type="button" onClick={onRotateKey}>
-              更新 API 金鑰
-            </button>
-            <button type="button" className="danger" onClick={onDelete}>
-              刪除節點
-            </button>
-          </div>
-        </details>
+        <div className="row-actions">
+          <button className="edit-device-button" type="button" onClick={onEdit}>
+            編輯
+          </button>
+          <details className="row-menu">
+            <summary aria-label={`更多管理選項：${device.name}`}>•••</summary>
+            <div>
+              <button type="button" onClick={onDownload}>
+                下載完整安裝包
+              </button>
+              <button type="button" onClick={onRotateKey}>
+                更新 API 金鑰
+              </button>
+              <button type="button" className="danger" onClick={onDelete}>
+                刪除節點
+              </button>
+            </div>
+          </details>
+        </div>
       </td>
     </tr>
   );
