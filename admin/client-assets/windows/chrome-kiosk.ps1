@@ -6,7 +6,7 @@ $InstallRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $InstallRoot 'config.json'
 $DetectorPath = Join-Path $InstallRoot 'detect-canva-duration.ps1'
 $LogPath = Join-Path $InstallRoot 'tv-wall.log'
-$AppVersion = '1.2.0'
+$AppVersion = '1.2.1'
 $StartedAt = Get-Date
 
 function Write-Log {
@@ -47,20 +47,27 @@ function Start-KioskBrowser {
 function Send-PlaybackKey {
     param([string]$ProfilePath)
     $escaped = [Regex]::Escape($ProfilePath)
-    $browser = Get-CimInstance Win32_Process |
+    $browserProcesses = Get-CimInstance Win32_Process |
         Where-Object {
             $_.Name -match '^(chrome|msedge)\.exe$' -and
             $_.CommandLine -match "--user-data-dir=`"?$escaped"
-        } |
-        Select-Object -First 1
+        }
 
-    if ($browser) {
-        $shell = New-Object -ComObject WScript.Shell
-        if ($shell.AppActivate([int]$browser.ProcessId)) {
-            Start-Sleep -Seconds 1
-            $shell.SendKeys(' ')
+    foreach ($browserProcess in $browserProcesses) {
+        $desktopProcess = Get-Process -Id $browserProcess.ProcessId -ErrorAction SilentlyContinue
+        if ($desktopProcess -and $desktopProcess.MainWindowHandle -ne 0) {
+            $shell = New-Object -ComObject WScript.Shell
+            if ($shell.AppActivate([int]$browserProcess.ProcessId)) {
+                Start-Sleep -Milliseconds 750
+                $shell.SendKeys('{SPACE}')
+                Write-Log "已將播放指令送至瀏覽器視窗 PID $($browserProcess.ProcessId)。"
+                return $true
+            }
         }
     }
+
+    Write-Log '找不到可接收播放指令的瀏覽器主視窗。'
+    return $false
 }
 
 function Sync-Control {
@@ -133,7 +140,9 @@ try {
         $browser = Start-KioskBrowser -Config $config
         Write-Log "已啟動瀏覽器 PID $($browser.Id)：$($config.Url)"
 
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 8
+        $null = Send-PlaybackKey -ProfilePath $config.BrowserProfile
+        Start-Sleep -Seconds 2
         $detected = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $DetectorPath -Port $config.DebugPort -WaitSeconds 30
         if ($LASTEXITCODE -eq 0 -and $detected -match '^\d+$') {
             $sleepSeconds = [int]$detected + 5
@@ -144,7 +153,9 @@ try {
             Write-Log "無法偵測播放長度；使用備援 $sleepSeconds 秒。"
         }
 
-        Send-PlaybackKey -ProfilePath $config.BrowserProfile
+        if ($LASTEXITCODE -ne 0) {
+            $null = Send-PlaybackKey -ProfilePath $config.BrowserProfile
+        }
 
         $remaining = $sleepSeconds
         while ($remaining -gt 0) {

@@ -51,12 +51,13 @@ test("supports device CRUD and operational status", async () => {
 });
 
 test("generates secure platform installation packages with full instructions", async () => {
-  const [builder, repository, macInstaller, windowsInstaller] =
+  const [builder, repository, macInstaller, windowsInstaller, windowsKiosk] =
     await Promise.all([
       readFile(new URL("app/install-package.ts", root), "utf8"),
       readFile(new URL("db/repository.ts", root), "utf8"),
       readFile(new URL("client-assets/macos/install-for-user.sh", root), "utf8"),
       readFile(new URL("client-assets/windows/install.ps1", root), "utf8"),
+      readFile(new URL("client-assets/windows/chrome-kiosk.ps1", root), "utf8"),
     ]);
 
   assert.match(builder, /device-config\.json/);
@@ -70,6 +71,8 @@ test("generates secure platform installation packages with full instructions", a
   assert.match(repository, /api_key_ciphertext/);
   assert.match(macInstaller, /DEVICE_API_KEY/);
   assert.match(windowsInstaller, /DeviceApiKey/);
+  assert.match(windowsKiosk, /MainWindowHandle/);
+  assert.match(windowsKiosk, /SendKeys\('\{SPACE\}'\)/);
   assert.match(builder, /install-elevated\.ps1/);
   assert.match(builder, /-Wait/);
   assert.match(builder, /-EncodedCommand/);
