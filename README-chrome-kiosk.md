@@ -11,6 +11,7 @@
 | `Chrome Kiosk Player.applescript` | Player App 原始碼：確認全螢幕並按空白鍵開始播放 |
 | `com.example.chrome-kiosk.plist` | launchd 範本：登入時自動啟動，結束後自動重啟 |
 | `install-for-user.sh` | 安裝程式 |
+| `uninstall-for-user.sh` | 移除程式 |
 
 ## 安裝
 
@@ -54,11 +55,24 @@
 
 在終端機按 `Control + C` 會停止腳本並關閉 kiosk Chrome。
 
-停止自動啟動：
+直接在畫面上按 `Cmd+Q` 關掉 Chrome 沒有用：腳本會判定 Chrome 已結束，launchd 約 10 秒後就會重新啟動。要停止必須透過 launchd。
+
+暫時停止（下次登入會再自動啟動），以該帳號執行：
 
 ```sh
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.example.chrome-kiosk.plist
+launchctl bootout gui/$(id -u)/com.example.chrome-kiosk
 ```
+
+## 移除
+
+```sh
+sudo ./uninstall-for-user.sh --dry-run user   # 先預覽會停止與刪除的項目
+sudo ./uninstall-for-user.sh user             # 實際移除
+```
+
+移除程式會停止服務並關閉 kiosk Chrome，再刪除 LaunchAgent、`Application Support/Chrome Kiosk`（含 Chrome 設定檔）、Player App 與記錄檔。加上 `--keep-logs` 可保留記錄檔。
+
+編譯出的 Player App 沒有 bundle ID，無法只針對它重設權限，最後請手動到「系統設定 → 隱私權與安全性 → 輔助使用」把 Chrome Kiosk Player 從清單移除。
 
 ## 記錄檔
 
