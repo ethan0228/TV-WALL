@@ -61,13 +61,41 @@ plutil -lint "$TARGET_PLIST" >/dev/null
 # 從 repo 裡的 AppleScript 原始碼編譯 Player App。
 # 注意：重新編譯後 App 的簽章會改變，macOS 可能需要重新在「輔助使用」允許它。
 rm -rf "$TARGET_PLAYER_APP"
-osacompile -o "$TARGET_PLAYER_APP" "$SOURCE_DIR/Chrome Kiosk Player.applescript"
+# osacompile 每次都會印出「replacing existing signature」（重新做 ad-hoc 簽章），屬正常訊息，過濾掉；
+# 真的編譯失敗時才把完整輸出印出來。
+if ! COMPILE_OUTPUT="$(osacompile -o "$TARGET_PLAYER_APP" "$SOURCE_DIR/Chrome Kiosk Player.applescript" 2>&1)"; then
+    echo "$COMPILE_OUTPUT" >&2
+    echo "編譯 Chrome Kiosk Player.app 失敗。" >&2
+    exit 1
+fi
+grep -v 'replacing existing signature' <<<"$COMPILE_OUTPUT" >&2 || true
 chown -R "$TARGET_USER:$TARGET_GROUP" "$TARGET_PLAYER_APP"
+
+LABEL="com.example.chrome-kiosk"
+SERVICE="gui/$TARGET_UID/$LABEL"
+
+# 清掉先前 `launchctl disable` 留下的停用紀錄。服務被停用時，bootstrap 只會回報
+# 「Bootstrap failed: 5: Input/output error」，登入時也不會自動啟動。
+launchctl enable "$SERVICE" 2>/dev/null || true
 
 # 如果使用者已有 GUI 登入工作階段，立即載入；否則會在下次登入時由 macOS 自動載入。
 if launchctl print "gui/$TARGET_UID" >/dev/null 2>&1; then
-    launchctl bootout "gui/$TARGET_UID" "$TARGET_PLIST" >/dev/null 2>&1 || true
-    launchctl bootstrap "gui/$TARGET_UID" "$TARGET_PLIST"
+    if launchctl print "$SERVICE" >/dev/null 2>&1; then
+        launchctl bootout "$SERVICE" 2>/dev/null || true
+        # bootout 不會等舊程序完全結束；舊的還在時立刻 bootstrap 同樣會得到錯誤 5，所以最多等 15 秒。
+        for _ in $(seq 1 30); do
+            launchctl print "$SERVICE" >/dev/null 2>&1 || break
+            sleep 0.5
+        done
+    fi
+    if ! launchctl bootstrap "gui/$TARGET_UID" "$TARGET_PLIST"; then
+        echo "載入 LaunchAgent 失敗。檔案已安裝完成，可先查看：" >&2
+        echo "  launchctl print-disabled gui/$TARGET_UID | grep $LABEL   # 是否被停用" >&2
+        echo "  launchctl print $SERVICE                                  # 是否仍在載入中" >&2
+        echo "  plutil -lint \"$TARGET_PLIST\"" >&2
+        echo "或登出再登入 ${TARGET_USER}，讓 macOS 自動載入。" >&2
+        exit 1
+    fi
 fi
 
 echo "安裝完成：$TARGET_USER 登入後會自動啟動 Chrome kiosk。"
