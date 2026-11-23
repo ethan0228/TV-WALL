@@ -21,7 +21,7 @@ if ! USER_INFO="$(/usr/bin/ruby -retc -e '
     group = (Etc.getgrgid(pw.gid).name rescue pw.gid)
     print pw.name, "\n", pw.uid, "\n", group, "\n", pw.dir
 ' "$TARGET_USER" 2>/dev/null)"; then
-    echo "找不到使用者：$TARGET_USER（請用帳號的短名稱，可在該帳號下執行 whoami 查看）" >&2
+    echo "找不到使用者：${TARGET_USER}（請用帳號的短名稱，可在該帳號下執行 whoami 查看）" >&2
     exit 1
 fi
 {
@@ -34,7 +34,7 @@ fi
 # 家目錄要由 macOS 在第一次登入時建立（含 Library 等預設內容）；
 # 若由安裝程式先建立，macOS 就不會再補上預設內容，帳號會不完整。
 if [[ ! -d "$TARGET_HOME/Library" ]]; then
-    echo "$TARGET_USER 的家目錄尚未建立（$TARGET_HOME）。請先用這個帳號登入一次，再執行安裝。" >&2
+    echo "$TARGET_USER 的家目錄尚未建立（${TARGET_HOME}）。請先用這個帳號登入一次，再執行安裝。" >&2
     exit 1
 fi
 TARGET_SUPPORT="$TARGET_HOME/Library/Application Support/Chrome Kiosk"
@@ -72,6 +72,6 @@ fi
 
 echo "安裝完成：$TARGET_USER 登入後會自動啟動 Chrome kiosk。"
 echo "接下來請以 $TARGET_USER 登入，並在該帳號的畫面上完成："
-echo "  1. 「系統設定 → 隱私權與安全性 → 輔助使用」允許 $TARGET_PLAYER_APP（重新安裝後可能需要先移除再加入）"
+echo "  1. 「系統設定 → 隱私權與安全性 → 輔助使用」允許 ${TARGET_PLAYER_APP}（重新安裝後可能需要先移除再加入）"
 echo "  2. 第一次播放時，允許 Chrome Kiosk Player 控制「Google Chrome」與「System Events」的提示"
 echo "記錄檔位置：$TARGET_LOGS"
