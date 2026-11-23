@@ -10,6 +10,14 @@ require "uri"
 PORT = 9222
 WAIT_SECONDS = (ARGV[0] || "15").to_i
 
+# 看門狗：尋找頁面與執行 JS 各最多 WAIT_SECONDS 秒，超過總時限代表 Chrome 沒回應
+# （例如頁面在讀取途中重新載入），直接以失敗結束，避免主迴圈永遠卡住。
+Thread.new do
+  sleep(WAIT_SECONDS * 2 + 15)
+  warn "偵測逾時"
+  exit!(1)
+end
+
 def read_exact(socket, length)
   data = +""
   data << socket.readpartial(length - data.bytesize) while data.bytesize < length
@@ -60,7 +68,9 @@ target = nil
 
 until target || Time.now >= deadline
   begin
-    response = Net::HTTP.get(URI("http://127.0.0.1:#{PORT}/json/list"))
+    response = Net::HTTP.start("127.0.0.1", PORT, open_timeout: 2, read_timeout: 2) do |http|
+      http.get("/json/list").body
+    end
     targets = JSON.parse(response)
     target = targets.find { |item| item["type"] == "page" && item["url"].to_s.include?("canva.com/design/") }
   rescue StandardError

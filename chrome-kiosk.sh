@@ -49,9 +49,18 @@ start_playback() {
     open -W -gja "$PLAYER_APP"
 }
 
+ensure_chrome_alive() {
+    # Chrome 崩潰或被關閉時直接結束腳本，交給 launchd（KeepAlive）重新啟動整套流程。
+    if ! kill -0 "$CHROME_PID" 2>/dev/null; then
+        echo "kiosk Chrome 已結束，退出讓 launchd 重新啟動。" >&2
+        exit 1
+    fi
+}
+
 while true; do
     # 先讓 Canva 建立播放器，再讀取媒體長度；仍會在播放前完成偵測。
     sleep 10
+    ensure_chrome_alive
 
     if DETECTED_DURATION="$(/usr/bin/ruby "$DURATION_HELPER" 30)"; then
         echo "偵測到簡報長度：${DETECTED_DURATION} 秒"
@@ -70,5 +79,6 @@ while true; do
 
     echo "${SLEEP_SECONDS} 秒後重新載入並重新偵測。"
     sleep "$SLEEP_SECONDS"
+    ensure_chrome_alive
     osascript -e 'tell application "Google Chrome" to reload active tab of front window'
 done
