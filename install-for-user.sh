@@ -6,7 +6,6 @@
 set -euo pipefail
 
 TARGET_USER="${1:-user}"
-TARGET_GROUP="staff"
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ $EUID -ne 0 ]]; then
@@ -18,21 +17,33 @@ if ! TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null)"; then
     echo "找不到使用者：$TARGET_USER" >&2
     exit 1
 fi
-TARGET_HOME="$(dscl . -read "/Users/$TARGET_USER" NFSHomeDirectory | awk '{print $2}')"
+TARGET_GROUP="$(id -gn "$TARGET_USER")"
+# dscl 遇到含空白的路徑會把值放到下一行，所以去掉欄位名稱後再合併成一行。
+TARGET_HOME="$(dscl . -read "/Users/$TARGET_USER" NFSHomeDirectory | sed 's/^NFSHomeDirectory://' | tr -d '\n' | sed 's/^ *//')"
+
+# 家目錄要由 macOS 在第一次登入時建立（含 Library 等預設內容）；
+# 若由安裝程式先建立，macOS 就不會再補上預設內容，帳號會不完整。
+if [[ ! -d "$TARGET_HOME/Library" ]]; then
+    echo "$TARGET_USER 的家目錄尚未建立（$TARGET_HOME）。請先用這個帳號登入一次，再執行安裝。" >&2
+    exit 1
+fi
 TARGET_SUPPORT="$TARGET_HOME/Library/Application Support/Chrome Kiosk"
 TARGET_AGENTS="$TARGET_HOME/Library/LaunchAgents"
 TARGET_APPS="$TARGET_HOME/Applications"
 TARGET_PLIST="$TARGET_AGENTS/com.example.chrome-kiosk.plist"
 TARGET_PLAYER_APP="$TARGET_APPS/Chrome Kiosk Player.app"
+TARGET_LOGS="$TARGET_HOME/Library/Logs/Chrome Kiosk"
 
-install -d -o "$TARGET_USER" -g "$TARGET_GROUP" "$TARGET_SUPPORT" "$TARGET_AGENTS" "$TARGET_APPS"
+install -d -o "$TARGET_USER" -g "$TARGET_GROUP" "$TARGET_SUPPORT" "$TARGET_AGENTS" "$TARGET_APPS" "$TARGET_LOGS"
 install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 755 "$SOURCE_DIR/chrome-kiosk.sh" "$TARGET_SUPPORT/chrome-kiosk.sh"
 install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 755 "$SOURCE_DIR/kiosk-cdp.rb" "$TARGET_SUPPORT/kiosk-cdp.rb"
 # 舊版的偵測腳本已改名為 kiosk-cdp.rb。
 rm -f "$TARGET_SUPPORT/detect-canva-duration.rb"
 
 # plist 不能用 ~，安裝時把範本裡的 __TARGET_HOME__ 換成目標使用者的家目錄。
-sed "s#__TARGET_HOME__#$TARGET_HOME#g" "$SOURCE_DIR/com.example.chrome-kiosk.plist" >"$TARGET_PLIST"
+# 先做 XML 跳脫（plist 是 XML），再跳脫 sed 替換字串中有特殊意義的 \、# 和 &。
+ESCAPED_HOME="$(printf '%s' "$TARGET_HOME" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/[\\#&]/\\&/g')"
+sed "s#__TARGET_HOME__#$ESCAPED_HOME#g" "$SOURCE_DIR/com.example.chrome-kiosk.plist" >"$TARGET_PLIST"
 chown "$TARGET_USER:$TARGET_GROUP" "$TARGET_PLIST"
 chmod 644 "$TARGET_PLIST"
 plutil -lint "$TARGET_PLIST" >/dev/null
@@ -50,4 +61,7 @@ if launchctl print "gui/$TARGET_UID" >/dev/null 2>&1; then
 fi
 
 echo "安裝完成：$TARGET_USER 登入後會自動啟動 Chrome kiosk。"
-echo "請到「系統設定 → 隱私權與安全性 → 輔助使用」允許 $TARGET_PLAYER_APP（重新安裝後可能需要先移除再加入）。"
+echo "接下來請以 $TARGET_USER 登入，並在該帳號的畫面上完成："
+echo "  1. 「系統設定 → 隱私權與安全性 → 輔助使用」允許 $TARGET_PLAYER_APP（重新安裝後可能需要先移除再加入）"
+echo "  2. 第一次播放時，允許 Chrome Kiosk Player 控制「Google Chrome」與「System Events」的提示"
+echo "記錄檔位置：$TARGET_LOGS"

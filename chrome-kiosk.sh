@@ -11,6 +11,10 @@ KIOSK_PROFILE="${INSTALL_DIR}/profile"
 PLAYER_APP="${HOME}/Applications/Chrome Kiosk Player.app"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CDP_HELPER="$SCRIPT_DIR/kiosk-cdp.rb"
+# 記錄檔放在各使用者自己的 ~/Library/Logs，避免多個帳號搶同一個 /tmp 檔案。
+LOG_DIR="${HOME}/Library/Logs/Chrome Kiosk"
+# 遠端除錯埠依 UID 區分（例如 UID 501 → 9723），多個帳號同時登入時不會互相操作到對方的 Chrome。
+export KIOSK_CDP_PORT="${KIOSK_CDP_PORT:-$((9222 + $(id -u) % 1000))}"
 
 if ! [[ "$DEFAULT_REFRESH_SECONDS" =~ ^[0-9]+$ ]] || (( DEFAULT_REFRESH_SECONDS < 15 )); then
     echo "DEFAULT_REFRESH_SECONDS 必須是至少 15 的整數。" >&2
@@ -25,6 +29,13 @@ cdp() {
 # 比對安裝目錄前綴，舊版（設定檔直接放在安裝目錄）留下的程序也會一併關閉。
 pkill -f -- "--user-data-dir=$INSTALL_DIR" 2>/dev/null || true
 sleep 2
+mkdir -p "$LOG_DIR"
+
+# 除錯埠若被別的程式（例如其他帳號的 Chrome）佔用，kiosk-cdp.rb 會操作到錯的瀏覽器，因此直接停止。
+if /usr/bin/nc -z 127.0.0.1 "$KIOSK_CDP_PORT" 2>/dev/null; then
+    echo "連接埠 $KIOSK_CDP_PORT 已被其他程式使用，請設定 KIOSK_CDP_PORT 換一個埠。" >&2
+    exit 1
+fi
 
 # 使用獨立設定檔啟動真正的 kiosk 模式，隱藏網址列、分頁列和工具列。
 # autoplay-policy 允許 Canva 簡報中的影音與動畫不需手動點擊即可播放。
@@ -36,8 +47,8 @@ sleep 2
     --disable-session-crashed-bubble \
     --autoplay-policy=no-user-gesture-required \
     --remote-debugging-address=127.0.0.1 \
-    --remote-debugging-port=9222 \
-    "$URL" >>/tmp/chrome-kiosk-chrome.log 2>&1 &
+    --remote-debugging-port="$KIOSK_CDP_PORT" \
+    "$URL" >>"$LOG_DIR/chrome.log" 2>&1 &
 CHROME_PID=$!
 SLEEP_PID=""
 

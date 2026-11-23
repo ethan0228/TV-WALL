@@ -1,6 +1,6 @@
 #!/usr/bin/ruby
 #
-# 透過 Chrome 遠端除錯介面（CDP, 127.0.0.1:9222）操作 kiosk 中的 Canva 頁面。
+# 透過 Chrome 遠端除錯介面（CDP, 127.0.0.1:$KIOSK_CDP_PORT，預設 9222）操作 kiosk 中的 Canva 頁面。
 # 直接連到 Canva 分頁，不經過 AppleScript，因此不會誤操作到同時開著的一般 Chrome。
 #
 # 用法：
@@ -16,7 +16,7 @@ require "securerandom"
 require "socket"
 require "uri"
 
-PORT = 9222
+PORT = Integer(ENV.fetch("KIOSK_CDP_PORT", "9222"))
 COMMAND = ARGV[0].to_s
 WAIT_SECONDS = (ARGV[1] || "15").to_i
 
