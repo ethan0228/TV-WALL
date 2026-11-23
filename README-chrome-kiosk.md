@@ -7,13 +7,16 @@
 | 檔案 | 用途 |
 | --- | --- |
 | `chrome-kiosk.sh` | 主腳本：啟動 kiosk Chrome、偵測長度、播放、定時重新載入 |
-| `kiosk-cdp.rb` | 透過 Chrome 遠端除錯介面（127.0.0.1:9222）偵測簡報長度、判斷播放狀態、送出播放鍵、重新載入 |
+| `kiosk-cdp.rb` | 透過 Chrome 遠端除錯介面（127.0.0.1，埠號依使用者 UID 而定）偵測簡報長度、判斷播放狀態、送出播放鍵、重新載入 |
 | `Chrome Kiosk Player.applescript` | Player App 原始碼：確認全螢幕並按空白鍵開始播放 |
 | `com.example.chrome-kiosk.plist` | launchd 範本：登入時自動啟動，結束後自動重啟 |
 | `install-for-user.sh` | 安裝程式 |
 
 ## 安裝
 
+可以安裝到任何一個 macOS 帳號（不必是執行安裝的管理者帳號）。
+
+0. **先用要播放的帳號登入一次**，讓 macOS 建立該帳號的家目錄；家目錄不存在時安裝程式會拒絕安裝。
 1. 編輯 `com.example.chrome-kiosk.plist`，把網址換成要播放的 Canva `/watch` 連結；網址後方的數字是偵測失敗時的備援播放秒數（最短 15 秒）。
 2. 在 repo 資料夾執行安裝程式，參數是要自動播放的 macOS 使用者帳號（省略時為 `user`）：
 
@@ -25,9 +28,12 @@
    - 把腳本複製到 `~/Library/Application Support/Chrome Kiosk/`
    - 從 `Chrome Kiosk Player.applescript` 編譯出 `~/Applications/Chrome Kiosk Player.app`
    - 依目標使用者的家目錄產生 `~/Library/LaunchAgents/com.example.chrome-kiosk.plist`
+   - 建立記錄檔資料夾 `~/Library/Logs/Chrome Kiosk/`
    - 如果該使用者已登入，立即啟動
 
-3. 到「系統設定 → 隱私權與安全性 → 輔助使用」，允許 `~/Applications/Chrome Kiosk Player.app` 控制電腦，否則無法自動按下播放鍵。每次重新安裝都會重新編譯 App，macOS 可能要你先把舊的項目移除再加入。
+3. **以目標帳號登入**，在該帳號的畫面上完成兩項授權，否則無法自動按下播放鍵：
+   - 「系統設定 → 隱私權與安全性 → 輔助使用」允許 `~/Applications/Chrome Kiosk Player.app`。每次重新安裝都會重新編譯 App，macOS 可能要你先把舊的項目移除再加入。
+   - 第一次播放時，macOS 會詢問是否允許 Chrome Kiosk Player 控制「Google Chrome」與「System Events」，請按「好」。這個授權是每個帳號各自的，無人看管時沒人按就會一直卡在提示。
 
 ## 運作方式
 
@@ -56,11 +62,14 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.example.chrome-kiosk.p
 
 ## 記錄檔
 
-- `/tmp/chrome-kiosk.log`：腳本輸出（偵測到的長度、播放狀態等）
-- `/tmp/chrome-kiosk-error.log`：錯誤訊息
-- `/tmp/chrome-kiosk-chrome.log`：Chrome 的執行訊息
+每個帳號各自寫在 `~/Library/Logs/Chrome Kiosk/`（也可以用「主控台」App 查看）：
+
+- `kiosk.log`：腳本輸出（偵測到的長度、播放狀態等）
+- `kiosk-error.log`：錯誤訊息
+- `chrome.log`：Chrome 的執行訊息
 
 ## 注意事項
 
-- Chrome 的遠端除錯埠 9222 只綁在 127.0.0.1，但本機任何程式都能透過它控制 kiosk Chrome。請只在專用的播放主機上使用。
+- 遠端除錯埠預設為 `9222 + UID 後三位`（例如 UID 501 → 9723），多個帳號同時登入時各用各的埠。若埠已被其他程式佔用，腳本會在記錄檔說明並停止，可用環境變數 `KIOSK_CDP_PORT` 指定其他埠。
+- 遠端除錯埠只綁在 127.0.0.1，但本機任何程式都能透過它控制 kiosk Chrome。請只在專用的播放主機上使用。
 - `kiosk-cdp.rb` 使用 macOS 內建的 `/usr/bin/ruby`。Apple 已標記系統 Ruby 為棄用，未來的 macOS 若移除它，需要改用 Homebrew 的 Ruby。

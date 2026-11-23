@@ -17,8 +17,8 @@
     <key>ProcessType</key>
     <string>Interactive</string>
     <key>StandardOutPath</key>
-    <string>/tmp/chrome-kiosk.log</string>
+    <string>__TARGET_HOME__/Library/Logs/Chrome Kiosk/kiosk.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/chrome-kiosk-error.log</string>
+    <string>__TARGET_HOME__/Library/Logs/Chrome Kiosk/kiosk-error.log</string>
 </dict>
 </plist>
