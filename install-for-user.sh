@@ -13,13 +13,23 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-if ! TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null)"; then
-    echo "找不到使用者：$TARGET_USER" >&2
+# 用系統的使用者查詢（和 id 指令相同），涵蓋本機、網路／AD、受管理帳號與別名。
+# 不用 `dscl .`：它只查本機目錄節點，非本機帳號會出現 eDSRecordNotFound (-14136)。
+# 同時把輸入的名稱換成正式的短名稱，後續 install/chown 一律用它。
+if ! USER_INFO="$(/usr/bin/ruby -retc -e '
+    pw = Etc.getpwnam(ARGV[0])
+    group = (Etc.getgrgid(pw.gid).name rescue pw.gid)
+    print pw.name, "\n", pw.uid, "\n", group, "\n", pw.dir
+' "$TARGET_USER" 2>/dev/null)"; then
+    echo "找不到使用者：$TARGET_USER（請用帳號的短名稱，可在該帳號下執行 whoami 查看）" >&2
     exit 1
 fi
-TARGET_GROUP="$(id -gn "$TARGET_USER")"
-# dscl 遇到含空白的路徑會把值放到下一行，所以去掉欄位名稱後再合併成一行。
-TARGET_HOME="$(dscl . -read "/Users/$TARGET_USER" NFSHomeDirectory | sed 's/^NFSHomeDirectory://' | tr -d '\n' | sed 's/^ *//')"
+{
+    read -r TARGET_USER
+    read -r TARGET_UID
+    read -r TARGET_GROUP
+    IFS= read -r TARGET_HOME
+} <<<"$USER_INFO"
 
 # 家目錄要由 macOS 在第一次登入時建立（含 Library 等預設內容）；
 # 若由安裝程式先建立，macOS 就不會再補上預設內容，帳號會不完整。
