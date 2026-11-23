@@ -75,3 +75,4 @@ echo "接下來請以 $TARGET_USER 登入，並在該帳號的畫面上完成：
 echo "  1. 「系統設定 → 隱私權與安全性 → 輔助使用」允許 ${TARGET_PLAYER_APP}（重新安裝後可能需要先移除再加入）"
 echo "  2. 第一次播放時，允許 Chrome Kiosk Player 控制「Google Chrome」與「System Events」的提示"
 echo "記錄檔位置：$TARGET_LOGS"
+echo "要移除時執行：sudo ./uninstall-for-user.sh $TARGET_USER"
