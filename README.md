@@ -244,17 +244,17 @@ launchctl print-disabled gui/$(id -u user) | grep chrome-kiosk                  
 
 | 檔案 | 內容 |
 | --- | --- |
-| `kiosk.log` | 實際播放網址、偵測到的簡報長度、播放狀態、重新載入時間 |
+| `kiosk.log` | 實際播放網址、偵測到的簡報長度、播放狀態、重新載入時間（每行開頭都有時間） |
 | `kiosk-error.log` | 錯誤訊息 |
 | `chrome.log` | Chrome 的執行訊息 |
 
 正常運作時，`kiosk.log` 大致如下：
 
 ```text
-播放網址：https://www.canva.com/design/…/watch?…
-偵測到簡報長度：1011 秒
-播放狀態：已點「播放」開始播放
-1016 秒後重新載入並重新偵測。
+2026-11-24 09:00:05 播放網址：https://www.canva.com/design/…/watch?…
+2026-11-24 09:00:21 偵測到簡報長度：981 秒
+2026-11-24 09:00:36 播放狀態：已點「播放」開始播放
+2026-11-24 09:00:36 986 秒後重新載入並重新偵測。
 ```
 
 - `播放狀態：已在播放`：Player App 的空白鍵已讓簡報開始播放，腳本不做任何動作。
@@ -275,6 +275,7 @@ launchctl print-disabled gui/$(id -u user) | grep chrome-kiosk                  
 | `警告：這是 Canva 的編輯連結` | plist 裡放的是 `/edit` 編輯連結，改用[公開檢視連結](#2-建立公開檢視連結)。 |
 | 跳出「Chrome Kiosk Player 不允許傳送按鍵」 | 舊版的 Player App 沒有處理權限不足的錯誤，對話框會讓整個播放循環卡住（不會點「播放」、也不會重新載入）。更新到新版並重新安裝即可；新版沒有權限時會安靜跳過。 |
 | Player App 超過 30 秒沒有結束，已強制關閉 | Player App 停在權限提示上。到「系統設定 → 隱私權與安全性 → 自動化」允許，或忽略（不影響播放）。 |
+| Chrome 關掉、回到桌面 | 腳本每 5 秒確認一次 Chrome，關掉後約 10～15 秒內會由 launchd 重新開啟。`kiosk-error.log` 會記下「kiosk Chrome 已結束（…）」：`結束代碼 0` 表示 Chrome 自己正常結束；`被訊號 TERM／KILL 終止` 表示被其他程式關閉；`被訊號 SEGV／ABRT 終止` 表示 Chrome 當掉，可一併查看 `chrome.log`。反覆發生時，請保留這兩個檔案的最後幾十行以便排查。 |
 | Chrome 開了但簡報沒有開始播放 | 查看 `kiosk.log` 和 `kiosk-error.log` 的「播放狀態」。出現 `no-button` 表示頁面上找不到「播放」鈕：確認網址是 `/watch` 的公開檢視連結。出現 `failed` 表示點了沒反應：在無痕視窗開啟同一網址，看手動按播放是否正常。 |
 | 畫面一直重新開啟 Chrome | 查看 `kiosk-error.log`。常見原因是除錯埠被佔用：可在 plist 的 `EnvironmentVariables` 設定 `KIOSK_CDP_PORT` 換一個埠。 |
 | 螢幕過一段時間就黑了 | 照[建議設定](#建議讓電視牆無人看管也能持續運作)把「閒置時關閉顯示器」設為「永不」。 |

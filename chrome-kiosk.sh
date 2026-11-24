@@ -26,12 +26,16 @@ if [[ "${1:-}" == "--resolve-only" ]]; then
     exit
 fi
 
+# 記錄訊息時加上時間，方便對照 Chrome 何時結束、何時重新啟動。
+log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+err() { log "$@" >&2; }
+
 # 要開啟的網址：可直接修改這一行，或用第一個參數覆寫。
 # 可以是 Canva 的短網址（canva.link/…）或完整網址，/view 會自動改成 /watch。
 URL="${1:-https://www.canva.com/design/DAHOJXEvb9o/x3tAF2xvq3cvdreokETpfA/watch?utm_content=DAHOJXEvb9o&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=he38cf48331}"
 DEFAULT_REFRESH_SECONDS="${2:-200}"
 POST_PLAY_DELAY_SECONDS=5
-CHROME_BINARY="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+CHROME_BINARY="${CHROME_BINARY:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 INSTALL_DIR="${HOME}/Library/Application Support/Chrome Kiosk"
 # Chrome 設定檔放在子資料夾，不和腳本混在一起。
 KIOSK_PROFILE="${INSTALL_DIR}/profile"
@@ -45,7 +49,7 @@ LOG_DIR="${HOME}/Library/Logs/Chrome Kiosk"
 export KIOSK_CDP_PORT="${KIOSK_CDP_PORT:-$((9222 + $(id -u) % 1000))}"
 
 if ! [[ "$DEFAULT_REFRESH_SECONDS" =~ ^[0-9]+$ ]] || (( DEFAULT_REFRESH_SECONDS < 15 )); then
-    echo "DEFAULT_REFRESH_SECONDS 必須是至少 15 的整數。" >&2
+    err "DEFAULT_REFRESH_SECONDS 必須是至少 15 的整數。"
     exit 2
 fi
 
@@ -61,7 +65,7 @@ mkdir -p "$LOG_DIR"
 
 # 除錯埠若被別的程式（例如其他帳號的 Chrome）佔用，kiosk-cdp.rb 會操作到錯的瀏覽器，因此直接停止。
 if /usr/bin/nc -z 127.0.0.1 "$KIOSK_CDP_PORT" 2>/dev/null; then
-    echo "連接埠 $KIOSK_CDP_PORT 已被其他程式使用，請設定 KIOSK_CDP_PORT 換一個埠。" >&2
+    err "連接埠 $KIOSK_CDP_PORT 已被其他程式使用，請設定 KIOSK_CDP_PORT 換一個埠。"
     exit 1
 fi
 
@@ -73,14 +77,14 @@ for (( attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++ )); do
     (( attempt < RESOLVE_ATTEMPTS )) && sleep 5
 done
 if [[ -n "$PLAY_URL" ]]; then
-    [[ "$PLAY_URL" != "$URL" ]] && echo "播放網址：$PLAY_URL"
+    [[ "$PLAY_URL" != "$URL" ]] && log "播放網址：$PLAY_URL"
 else
-    echo "無法展開播放網址（網路未連線、短網址打錯或連結已刪除），直接開啟原網址：$URL" >&2
+    err "無法展開播放網址（網路未連線、短網址打錯或連結已刪除），直接開啟原網址：$URL"
     PLAY_URL="$URL"
 fi
 case "$PLAY_URL" in
     */edit|*/edit\?*)
-        echo "警告：這是 Canva 的編輯連結，需要登入才能開啟。請改用「分享 → 公開檢視連結」。" >&2
+        err "警告：這是 Canva 的編輯連結，需要登入才能開啟。請改用「分享 → 公開檢視連結」。"
         ;;
 esac
 
@@ -124,9 +128,28 @@ interruptible_sleep() {
 ensure_chrome_alive() {
     # Chrome 崩潰或被關閉時直接結束腳本，交給 launchd（KeepAlive）重新啟動整套流程。
     if ! kill -0 "$CHROME_PID" 2>/dev/null; then
-        echo "kiosk Chrome 已結束，退出讓 launchd 重新啟動。" >&2
+        local code=0 how
+        wait "$CHROME_PID" 2>/dev/null || code=$?
+        if (( code > 128 )); then
+            how="被訊號 $(kill -l $(( code - 128 )) 2>/dev/null || echo $(( code - 128 ))) 終止"
+        else
+            how="結束代碼 ${code}"
+        fi
+        err "kiosk Chrome 已結束（${how}），退出讓 launchd 重新啟動。"
         exit 1
     fi
+}
+
+# 等待期間每 5 秒確認一次 Chrome 還在。簡報可能長達十幾分鐘，
+# 若只在等待結束後才檢查，Chrome 中途關閉時畫面會停在桌面很久才恢復。
+watched_sleep() {
+    local remaining="$1" chunk
+    while (( remaining > 0 )); do
+        chunk=$(( remaining < 5 ? remaining : 5 ))
+        interruptible_sleep "$chunk"
+        remaining=$(( remaining - chunk ))
+        ensure_chrome_alive
+    done
 }
 
 start_playback() {
@@ -140,7 +163,7 @@ start_playback() {
         (( waited++ ))
     done
     if kill -0 "$open_pid" 2>/dev/null; then
-        echo "Player App 超過 ${PLAYER_TIMEOUT_SECONDS} 秒沒有結束（可能停在權限提示或錯誤對話框），已強制關閉。" >&2
+        err "Player App 超過 ${PLAYER_TIMEOUT_SECONDS} 秒沒有結束（可能停在權限提示或錯誤對話框），已強制關閉。"
         pkill -f -- "$PLAYER_APP/Contents/MacOS/" 2>/dev/null || true
         kill "$open_pid" 2>/dev/null || true
     fi
@@ -151,33 +174,34 @@ start_playback() {
     local result state
     result="$(cdp play)" || result="failed"
     case "$result" in
-        already-playing) echo "播放狀態：已在播放" ;;
-        started)         echo "播放狀態：已點「播放」開始播放" ;;
-        clicked)         echo "播放狀態：已點「播放」（頁面上沒有時間可確認）" ;;
+        already-playing) log "播放狀態：已在播放" ;;
+        started)         log "播放狀態：已點「播放」開始播放" ;;
+        clicked)         log "播放狀態：已點「播放」（頁面上沒有時間可確認）" ;;
         *)
             # 找不到「播放」鈕或點了沒反應：最後再試一次空白鍵。
-            echo "播放狀態：無法用「播放」鈕開始（${result}），改送空白鍵。" >&2
-            cdp press-space || echo "送出空白鍵失敗。" >&2
+            err "播放狀態：無法用「播放」鈕開始（${result}），改送空白鍵。"
+            cdp press-space || err "送出空白鍵失敗。"
             state="$(cdp state)" || state="unknown"
-            echo "播放狀態：$state"
-            [[ "$state" == "playing" ]] || echo "簡報仍未開始播放，請查看 README 的疑難排解。" >&2
+            log "播放狀態：$state"
+            [[ "$state" == "playing" ]] || err "簡報仍未開始播放，請查看 README 的疑難排解。"
             ;;
     esac
 }
 
 while true; do
     # 先讓 Canva 建立播放器，再讀取媒體長度；仍會在播放前完成偵測。
-    interruptible_sleep 10
-    ensure_chrome_alive
+    watched_sleep 10
 
     if DETECTED_DURATION="$(cdp duration 30)"; then
-        echo "偵測到簡報長度：${DETECTED_DURATION} 秒"
+        log "偵測到簡報長度：${DETECTED_DURATION} 秒"
     else
         DETECTED_DURATION=""
-        echo "無法偵測簡報長度，使用預設時間：${DEFAULT_REFRESH_SECONDS} 秒"
+        log "無法偵測簡報長度，使用預設時間：${DEFAULT_REFRESH_SECONDS} 秒"
     fi
 
+    ensure_chrome_alive
     start_playback
+    ensure_chrome_alive
 
     if [[ -n "$DETECTED_DURATION" ]]; then
         SLEEP_SECONDS=$((DETECTED_DURATION + POST_PLAY_DELAY_SECONDS))
@@ -185,13 +209,12 @@ while true; do
         SLEEP_SECONDS="$DEFAULT_REFRESH_SECONDS"
     fi
 
-    echo "${SLEEP_SECONDS} 秒後重新載入並重新偵測。"
-    interruptible_sleep "$SLEEP_SECONDS"
-    ensure_chrome_alive
+    log "${SLEEP_SECONDS} 秒後重新載入並重新偵測。"
+    watched_sleep "$SLEEP_SECONDS"
 
     # 透過 CDP 重新載入 kiosk 的 Canva 分頁；失敗時才退回 AppleScript。
     if ! cdp reload; then
-        echo "CDP 重新載入失敗，改用 AppleScript。" >&2
+        err "CDP 重新載入失敗，改用 AppleScript。"
         osascript -e 'tell application "Google Chrome" to reload active tab of front window'
     fi
 done
