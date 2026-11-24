@@ -178,12 +178,17 @@ start_playback() {
         started)         log "播放狀態：已點「播放」開始播放" ;;
         clicked)         log "播放狀態：已點「播放」（頁面上沒有時間可確認）" ;;
         *)
-            # 找不到「播放」鈕或點了沒反應：最後再試一次空白鍵。
-            err "播放狀態：無法用「播放」鈕開始（${result}），改送空白鍵。"
-            cdp press-space || err "送出空白鍵失敗。"
+            # 找不到「播放」鈕或點了沒反應（診斷資訊已寫進 kiosk-error.log）。
+            # 空白鍵是切換，只有確定是暫停時才按，避免把其實在播放的簡報按成暫停。
+            err "播放狀態：無法用「播放」鈕開始（${result}）。"
             state="$(cdp state)" || state="unknown"
+            if [[ "$state" == "paused" ]]; then
+                err "播放狀態：確定是暫停，改送空白鍵。"
+                cdp press-space || err "送出空白鍵失敗。"
+                state="$(cdp state)" || state="unknown"
+            fi
             log "播放狀態：$state"
-            [[ "$state" == "playing" ]] || err "簡報仍未開始播放，請查看 README 的疑難排解。"
+            [[ "$state" == "playing" ]] || err "簡報仍未開始播放，請把 kiosk-error.log 的「播放診斷」那一行提供給維護人員。"
             ;;
     esac
 }

@@ -135,6 +135,18 @@ def cdp(socket, method, params = {})
   end
 end
 
+def mouse(socket, type, x, y, pressed = false)
+  params = { type: type, x: x, y: y }
+  params.merge!(button: "left", buttons: pressed ? 1 : 0, clickCount: 1) unless type == "mouseMoved"
+  cdp(socket, "Input.dispatchMouseEvent", params)
+end
+
+def click_at(socket, x, y)
+  mouse(socket, "mouseMoved", x, y)
+  mouse(socket, "mousePressed", x, y, true)
+  mouse(socket, "mouseReleased", x, y)
+end
+
 def evaluate(socket, expression)
   result = cdp(socket, "Runtime.evaluate", expression: expression, awaitPromise: true, returnByValue: true)
   result.dig("result", "value")
@@ -166,37 +178,76 @@ JAVASCRIPT
 
 # 確保簡報在播放（以狀態為準，不是切換）：
 # Canva 的 /watch 播放器載入後不會自動播放；空白鍵是「播放／暫停」切換，而且要頁面有鍵盤焦點才收得到。
-# 直接點播放器上可見的「播放」鈕不需要焦點，也不需要「控制電腦」權限。
-# 先觀察 2.5 秒：時間有前進就不動作；否則點「播放」並確認時間開始前進，最多試 3 次。
-PLAY_JS = <<~JAVASCRIPT
-  new Promise(async (resolve) => {
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    const PLAY_LABELS = ['播放', 'Play', '再生', '재생', 'Reproducir', 'Lire', 'Abspielen', 'Riproduci', 'Reproduzir'];
-    const visible = (el) => {
-      const rect = el.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-    };
-    const times = () => Array.from(document.querySelectorAll('time')).map((item) => item.textContent.trim());
+# 做法：先把頁面帶到最前面，觀察 2.5 秒；時間有前進就不動作。否則在「看得見」的「播放」鈕中心
+# 送出真正的滑鼠點擊（CDP Input 事件，等同使用者點擊，不需要 macOS 權限），再確認時間開始前進，最多 3 次。
+PLAY_LABELS = %w[播放 Play 再生 재생 Reproducir Lire Abspielen Riproduci Reproduzir].freeze
+PAUSE_LABELS = %w[暫停 Pause 一時停止 일시정지 Pausa Pausieren].freeze
+
+# 時間（或影片）在 2.5 秒內有沒有前進。
+ADVANCING_JS = <<~JAVASCRIPT
+  new Promise((resolve) => {
+    const times = () => Array.from(document.querySelectorAll('time')).map((item) => item.textContent.trim()).join('|');
     const videoPlaying = () => Array.from(document.querySelectorAll('video'))
       .some((video) => !video.paused && !video.ended && video.readyState > 2);
-    const advancing = async () => {
-      const before = times().join('|');
-      await sleep(2500);
-      return videoPlaying() || before !== times().join('|');
-    };
-    if (await advancing()) return resolve('already-playing');
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const button = Array.from(document.querySelectorAll('button[aria-label]'))
-        .filter(visible)
-        .find((item) => PLAY_LABELS.includes(item.getAttribute('aria-label')));
-      if (!button) return resolve('no-button');
-      button.click();
-      // 頁面上沒有時間也沒有影片時無法確認，點過就算數。
-      if (!times().length && !document.querySelector('video')) return resolve('clicked');
-      if (await advancing()) return resolve('started');
-    }
-    resolve('failed');
+    const before = times();
+    setTimeout(() => resolve(videoPlaying() || before !== times()), 2500);
   })
+JAVASCRIPT
+
+# 把元素與所有上層的 opacity 相乘：Canva 會把隱藏的按鈕設成透明，而不是移除。
+OPACITY_JS = <<~JAVASCRIPT
+  const effectiveOpacity = (el) => {
+    let value = 1;
+    for (let node = el; node && node.nodeType === 1; node = node.parentElement) value *= parseFloat(getComputedStyle(node).opacity);
+    return value;
+  };
+JAVASCRIPT
+
+# 找出看得見的「播放」鈕，回傳中心座標；找不到回傳 null。
+PLAY_BUTTON_JS = <<~JAVASCRIPT
+  (() => {
+    #{OPACITY_JS}
+    const labels = #{JSON.generate(PLAY_LABELS)};
+    const candidates = Array.from(document.querySelectorAll('button[aria-label]'))
+      .filter((button) => labels.includes(button.getAttribute('aria-label')))
+      .map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { button, rect, opacity: effectiveOpacity(button), x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })
+      .filter(({ rect, opacity }) => rect.width > 0 && rect.height > 0 && opacity > 0.5
+        && rect.right > 0 && rect.bottom > 0 && rect.left < innerWidth && rect.top < innerHeight)
+      // 中心點真的會點到這顆按鈕（沒有被其他透明按鈕蓋住），才算數。
+      .filter(({ button, x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit && (hit === button || button.contains(hit));
+      })
+      .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
+    if (!candidates.length) return null;
+    return { x: candidates[0].x, y: candidates[0].y };
+  })()
+JAVASCRIPT
+
+# 播放失敗時記錄的頁面狀態，用來判斷是頁面沒在前景、按鈕被隱藏，還是點了沒反應。
+DIAGNOSTICS_JS = <<~JAVASCRIPT
+  (() => {
+    #{OPACITY_JS}
+    const labels = #{JSON.generate(PLAY_LABELS + PAUSE_LABELS)};
+    return {
+      visibility: document.visibilityState,
+      focus: document.hasFocus(),
+      activated: navigator.userActivation ? navigator.userActivation.hasBeenActive : null,
+      viewport: [innerWidth, innerHeight],
+      times: Array.from(document.querySelectorAll('time')).map((item) => item.textContent.trim()),
+      videos: document.querySelectorAll('video').length,
+      buttons: Array.from(document.querySelectorAll('button[aria-label]'))
+        .filter((button) => labels.includes(button.getAttribute('aria-label')))
+        .map((button) => {
+          const rect = button.getBoundingClientRect();
+          return `${button.getAttribute('aria-label')}@${Math.round(rect.left)},${Math.round(rect.top)} ` +
+            `${Math.round(rect.width)}x${Math.round(rect.height)} op=${effectiveOpacity(button).toFixed(2)}`;
+        }),
+    };
+  })()
 JAVASCRIPT
 
 # 判斷是否正在播放：比較 2.5 秒前後播放器上的時間文字。
@@ -228,7 +279,46 @@ begin
     exit 1 unless value.is_a?(Numeric) && value.positive?
     puts value.ceil
   when "play"
-    puts evaluate(socket, PLAY_JS) || "failed"
+    # 先把 kiosk 分頁帶到最前面：頁面在背景時 Chrome 會暫停動畫，Canva 的時間軸不會前進。
+    begin
+      cdp(socket, "Page.bringToFront")
+    rescue StandardError
+      nil
+    end
+    result =
+      if evaluate(socket, ADVANCING_JS) == true
+        "already-playing"
+      else
+        outcome = nil
+        3.times do
+          position = evaluate(socket, PLAY_BUTTON_JS)
+          unless position
+            # 控制列可能已自動隱藏：把滑鼠移到畫面中央讓它出現，再找一次。
+            width, height = evaluate(socket, "[innerWidth, innerHeight]")
+            mouse(socket, "mouseMoved", width / 2.0, height / 2.0)
+            sleep 1
+            position = evaluate(socket, PLAY_BUTTON_JS)
+          end
+          unless position
+            outcome = "no-button"
+            break
+          end
+          click_at(socket, position["x"], position["y"])
+          if evaluate(socket, "document.querySelectorAll('time, video').length").to_i.zero?
+            outcome = "clicked" # 頁面上沒有時間也沒有影片，無法確認，點過就算數。
+            break
+          end
+          if evaluate(socket, ADVANCING_JS) == true
+            outcome = "started"
+            break
+          end
+        end
+        outcome || "failed"
+      end
+    puts result
+    unless %w[already-playing started clicked].include?(result)
+      warn "播放診斷：#{JSON.generate(evaluate(socket, DIAGNOSTICS_JS))}"
+    end
   when "state"
     puts evaluate(socket, STATE_JS) || "unknown"
   when "press-space"
