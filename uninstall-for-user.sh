@@ -120,5 +120,11 @@ if (( DRY_RUN )); then
 else
     echo "移除完成。"
     # 編譯出的 Player App 沒有 bundle ID，tccutil 無法只針對它重設，只能手動移除。
-    echo "最後請到「系統設定 → 隱私權與安全性 → 輔助使用」，把 Chrome Kiosk Player 從清單移除。"
+    # 「控制電腦」權限清單的名稱：macOS 27 起叫「裝置控制和資料取用」，之前叫「輔助使用」。
+    if (( $(sw_vers -productVersion | cut -d. -f1) >= 27 )); then
+        DEVICE_CONTROL_PANE="裝置控制和資料取用"
+    else
+        DEVICE_CONTROL_PANE="輔助使用"
+    fi
+    echo "最後請到「系統設定 → 隱私權與安全性」，在「${DEVICE_CONTROL_PANE}」和「自動化」把 Chrome Kiosk Player 移除。"
 fi
