@@ -59,7 +59,7 @@ chmod 644 "$TARGET_PLIST"
 plutil -lint "$TARGET_PLIST" >/dev/null
 
 # 從 repo 裡的 AppleScript 原始碼編譯 Player App。
-# 注意：重新編譯後 App 的簽章會改變，macOS 可能需要重新在「輔助使用」允許它。
+# 注意：重新編譯後 App 的簽章會改變，必須重新授權（見安裝完成後的提示）。
 rm -rf "$TARGET_PLAYER_APP"
 # osacompile 每次都會印出「replacing existing signature」（重新做 ad-hoc 簽章），屬正常訊息，過濾掉；
 # 真的編譯失敗時才把完整輸出印出來。
@@ -98,9 +98,19 @@ if launchctl print "gui/$TARGET_UID" >/dev/null 2>&1; then
     fi
 fi
 
+# 「控制電腦」權限清單的名稱：macOS 27 起叫「裝置控制和資料取用」，之前叫「輔助使用」。
+if (( $(sw_vers -productVersion | cut -d. -f1) >= 27 )); then
+    DEVICE_CONTROL_PANE="裝置控制和資料取用"
+else
+    DEVICE_CONTROL_PANE="輔助使用"
+fi
+
 echo "安裝完成：$TARGET_USER 登入後會自動啟動 Chrome kiosk。"
 echo "接下來請以 $TARGET_USER 登入，並在該帳號的畫面上完成："
-echo "  1. 「系統設定 → 隱私權與安全性 → 輔助使用」允許 ${TARGET_PLAYER_APP}（重新安裝後可能需要先移除再加入）"
-echo "  2. 第一次播放時，允許 Chrome Kiosk Player 控制「Google Chrome」與「System Events」的提示"
+echo "  1. 「系統設定 → 隱私權與安全性 → ${DEVICE_CONTROL_PANE}」加入並打開 ${TARGET_PLAYER_APP}"
+echo "     （重新安裝後，清單上的舊項目已失效，請先用「－」移除再重新加入）"
+echo "  2. 第一次播放時，跳出「想要有控制『System Events』的權限」請按「允許」"
+echo "     （若按了不允許：「系統設定 → 隱私權與安全性 → 自動化」打開 Chrome Kiosk Player 底下的項目）"
+echo "  3. 建議設定自動登入、閒置時關閉顯示器設為「永不」等，詳見 README.md 的「系統設定」"
 echo "記錄檔位置：$TARGET_LOGS"
 echo "要移除時執行：sudo ./uninstall-for-user.sh $TARGET_USER"
