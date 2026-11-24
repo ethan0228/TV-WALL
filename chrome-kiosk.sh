@@ -36,6 +36,7 @@ INSTALL_DIR="${HOME}/Library/Application Support/Chrome Kiosk"
 # Chrome 設定檔放在子資料夾，不和腳本混在一起。
 KIOSK_PROFILE="${INSTALL_DIR}/profile"
 PLAYER_APP="${HOME}/Applications/Chrome Kiosk Player.app"
+PLAYER_TIMEOUT_SECONDS="${PLAYER_TIMEOUT_SECONDS:-30}"   # Player App 正常約 10 秒結束；超過就強制關閉
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CDP_HELPER="$SCRIPT_DIR/kiosk-cdp.rb"
 # 記錄檔放在各使用者自己的 ~/Library/Logs，避免多個帳號搶同一個 /tmp 檔案。
@@ -129,9 +130,21 @@ ensure_chrome_alive() {
 }
 
 start_playback() {
-    # Player App 會等待頁面載入 5 秒、確認全螢幕，再送出播放鍵（需要「控制電腦」權限）。
-    # -W 會等到 App 結束，之後才開始計算播放時間。
-    open -W -gja "$PLAYER_APP"
+    # Player App 會等待頁面載入 5 秒、把 Chrome 帶到最前面並確認全螢幕，再按空白鍵（需要「控制電腦」權限）。
+    # 用 -W 等它結束，但最多等 PLAYER_TIMEOUT_SECONDS 秒：第一次執行時的權限提示（或任何對話框）
+    # 會讓 App 停住不結束，不能讓整個播放循環跟著卡住。
+    open -W -gja "$PLAYER_APP" &
+    local open_pid=$! waited=0
+    while kill -0 "$open_pid" 2>/dev/null && (( waited < PLAYER_TIMEOUT_SECONDS )); do
+        sleep 1
+        (( waited++ ))
+    done
+    if kill -0 "$open_pid" 2>/dev/null; then
+        echo "Player App 超過 ${PLAYER_TIMEOUT_SECONDS} 秒沒有結束（可能停在權限提示或錯誤對話框），已強制關閉。" >&2
+        pkill -f -- "$PLAYER_APP/Contents/MacOS/" 2>/dev/null || true
+        kill "$open_pid" 2>/dev/null || true
+    fi
+    wait "$open_pid" 2>/dev/null || true
 
     # Canva 的 /watch 播放器不會自動播放，而 Player App 的空白鍵需要「控制電腦」權限和鍵盤焦點，不一定送得到。
     # 所以再透過 CDP 確認：沒在播就直接點播放器的「播放」鈕，並確認時間開始前進（以狀態為準，不會把播放中的簡報暫停）。

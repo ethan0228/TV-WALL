@@ -117,7 +117,7 @@ else
 fi
 
 echo "安裝完成：$TARGET_USER 登入後會自動啟動 Chrome kiosk。"
-echo "接下來請以 $TARGET_USER 登入，並在該帳號的畫面上完成："
+echo "建議以 $TARGET_USER 登入，在該帳號的畫面上完成以下授權（沒有授權也能播放，授權後可確保 kiosk 畫面在最前面）："
 echo "  1. 「系統設定 → 隱私權與安全性 → ${DEVICE_CONTROL_PANE}」加入並打開 ${TARGET_PLAYER_APP}"
 echo "     （重新安裝後，清單上的舊項目已失效，請先用「－」移除再重新加入）"
 echo "  2. 第一次播放時，跳出「想要有控制『System Events』的權限」請按「允許」"
