@@ -29,7 +29,7 @@ end
 
 # 看門狗：Chrome 沒回應（例如頁面在讀取途中重新載入）時直接以失敗結束，
 # 避免主迴圈永遠卡住。
-WATCHDOG_SECONDS = { "duration" => WAIT_SECONDS * 2 + 15, "play" => 40 }.fetch(COMMAND, 20)
+WATCHDOG_SECONDS = { "duration" => WAIT_SECONDS * 2 + 15, "play" => 60 }.fetch(COMMAND, 20)
 Thread.new do
   sleep WATCHDOG_SECONDS
   warn "CDP 操作逾時（#{COMMAND}）"
@@ -285,12 +285,19 @@ begin
     rescue StandardError
       nil
     end
+    # 等頁面載入完成（最多 15 秒），播放器的按鈕才會有反應。
+    15.times do
+      break if evaluate(socket, "document.readyState") == "complete"
+      sleep 1
+    end
     result =
       if evaluate(socket, ADVANCING_JS) == true
         "already-playing"
       else
         outcome = nil
-        3.times do
+        3.times do |attempt|
+          # 重試之間隔 3 秒：播放器可能還沒準備好，連續快速點擊只會全部落空。
+          sleep 3 if attempt.positive?
           position = evaluate(socket, PLAY_BUTTON_JS)
           unless position
             # 控制列可能已自動隱藏：把滑鼠移到畫面中央讓它出現，再找一次。

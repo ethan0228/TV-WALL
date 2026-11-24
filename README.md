@@ -21,8 +21,8 @@
 1. 使用者登入時，launchd 依 LaunchAgent 啟動 `chrome-kiosk.sh`。
 2. 腳本先整理播放網址（展開 `canva.link` 短網址、把 `/view` 改成 `/watch`），再以獨立、無痕的 Chrome 設定檔開啟 kiosk 模式（隱藏網址列、分頁列和工具列）。
 3. 透過 Chrome 遠端除錯介面（CDP）讀取播放器上的總長度；偵測不到時改用備援秒數（預設 200 秒）。
-4. `Chrome Kiosk Player.app` 確認全螢幕後按空白鍵。
-5. Canva 的 `/watch` 播放器載入後**不會自動播放**，而空白鍵需要「控制電腦」權限和鍵盤焦點，不一定送得到。所以腳本會透過 CDP 先把 kiosk 頁面帶到最前面，再觀察播放器時間：已在前進就不動作；沒有前進就在看得見的「播放」鈕上送出真正的滑鼠點擊（等同有人點擊，不需要 macOS 權限），並確認時間開始前進（最多試 3 次）。仍失敗時，只有確定是暫停才改送空白鍵。以狀態為準，不會把播放中的簡報暫停。
+4. 播放器出現後再等 3 秒（`PLAY_SETTLE_SECONDS`）讓它準備好，`Chrome Kiosk Player.app` 才確認全螢幕並按空白鍵。播放器的按鈕可能比它真正能回應更早出現，太早點擊會沒有反應。
+5. Canva 的 `/watch` 播放器載入後**不會自動播放**，而空白鍵需要「控制電腦」權限和鍵盤焦點，不一定送得到。所以腳本會透過 CDP 先把 kiosk 頁面帶到最前面，再觀察播放器時間：已在前進就不動作；沒有前進就在看得見的「播放」鈕上送出真正的滑鼠點擊（等同有人點擊，不需要 macOS 權限），並確認時間開始前進（等頁面載入完成後才點，最多試 3 次、每次間隔 3 秒）。仍失敗時，只有確定是暫停才改送空白鍵。以狀態為準，不會把播放中的簡報暫停。
 6. 等待「簡報總長度＋5 秒」後，透過 CDP 重新載入頁面，回到第 3 步。
 7. Chrome 當掉或被關閉時，腳本會結束，由 launchd 自動重新啟動整套流程。
 
@@ -278,6 +278,7 @@ launchctl print-disabled gui/$(id -u user) | grep chrome-kiosk                  
 | Chrome 關掉、回到桌面 | 腳本每 5 秒確認一次 Chrome，關掉後約 10～15 秒內會由 launchd 重新開啟。`kiosk-error.log` 會記下「kiosk Chrome 已結束（…）」：`結束代碼 0` 表示 Chrome 自己正常結束；`被訊號 TERM／KILL 終止` 表示被其他程式關閉；`被訊號 SEGV／ABRT 終止` 表示 Chrome 當掉，可一併查看 `chrome.log`。反覆發生時，請保留這兩個檔案的最後幾十行以便排查。 |
 | Chrome 開了但簡報沒有開始播放 | 查看 `kiosk.log` 和 `kiosk-error.log` 的「播放狀態」與「播放診斷」。`no-button`：頁面上找不到看得見的「播放」鈕，確認網址是 `/watch` 的公開檢視連結。`failed`：點了時間仍不前進；若診斷顯示 `"visibility":"hidden"`，表示 Chrome 視窗不在畫面上（被其他視窗或桌面空間蓋住）。回報問題時請附上「播放診斷」那一行。 |
 | 畫面一直重新開啟 Chrome | 查看 `kiosk-error.log`。常見原因是除錯埠被佔用：可在 plist 的 `EnvironmentVariables` 設定 `KIOSK_CDP_PORT` 換一個埠。 |
+| 點了「播放」沒反應，但手動點可以 | 播放器可能還沒準備好就被點擊。可在 plist 加上 `EnvironmentVariables`，把 `PLAY_SETTLE_SECONDS` 設長一點（預設 3 秒），重新安裝後生效：<br>`<key>EnvironmentVariables</key><dict><key>PLAY_SETTLE_SECONDS</key><string>8</string></dict>` |
 | 螢幕過一段時間就黑了 | 照[建議設定](#建議讓電視牆無人看管也能持續運作)把「閒置時關閉顯示器」設為「永不」。 |
 | 停電或重開機後停在登入畫面 | 設定「自動登入為」播放帳號（需關閉檔案保險箱）。 |
 | 服務的狀態與最後結束代碼 | `sudo launchctl print gui/$(id -u user)/com.example.chrome-kiosk` |
