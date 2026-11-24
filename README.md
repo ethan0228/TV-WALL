@@ -174,9 +174,22 @@ sudo ./install-for-user.sh user
 
 重新安裝後記得照[系統設定](#必要授權-player-app)重新授權 Player App。
 
-### 暫時停止
+### 停止與恢復
 
-直接在畫面上按 `Cmd+Q` 關掉 Chrome **沒有用**：腳本會判定 Chrome 已結束，launchd 約 10 秒後就會重新啟動。要停止必須透過 launchd。
+LaunchAgent 設定了 `KeepAlive`：Chrome 或腳本一結束，launchd 約 10 秒後就會重新啟動。所以直接關掉 Chrome、在畫面上按 `Cmd+Q` 都**沒有用**，要停止必須透過 launchd。
+
+kiosk 全螢幕時看不到「終端機」：按 `Cmd+Tab` 切到其他程式，或按 `Cmd+空白鍵` 搜尋「終端機」開啟。
+
+以下指令的 `user` 請換成播放帳號的短名稱。
+
+| 想做的事 | 指令 | 效果 |
+| --- | --- | --- |
+| 暫時停止 | 播放帳號：`launchctl bootout gui/$(id -u)/com.example.chrome-kiosk`<br>管理者：`sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk` | 停止腳本並關閉 kiosk Chrome；**下次登入會再自動啟動** |
+| 恢復播放 | 重新登入播放帳號，或 `sudo ./install-for-user.sh user` | 重新載入並開始播放 |
+| 登入時不再自動啟動（保留檔案） | 先「暫時停止」，再 `sudo launchctl disable gui/$(id -u user)/com.example.chrome-kiosk` | 之後登入也不會啟動；重新執行安裝程式會自動解除停用 |
+| 完全移除 | `sudo ./uninstall-for-user.sh user` | 見[移除](#移除) |
+
+#### 暫時停止
 
 以播放帳號執行：
 
@@ -184,17 +197,38 @@ sudo ./install-for-user.sh user
 launchctl bootout gui/$(id -u)/com.example.chrome-kiosk
 ```
 
-從管理者帳號執行（`user` 換成播放帳號）：
+從管理者帳號執行：
 
 ```sh
 sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk
 ```
 
-停止後，下次這個帳號登入時會再自動啟動。
+#### 恢復播放
 
-### 恢復播放
+重新登入播放帳號，或在 repo 資料夾重新執行安裝程式：
 
-重新登入播放帳號，或重新執行安裝程式。
+```sh
+sudo ./install-for-user.sh user
+```
+
+#### 登入時不再自動啟動
+
+先執行「暫時停止」，再：
+
+```sh
+sudo launchctl disable gui/$(id -u user)/com.example.chrome-kiosk
+```
+
+要恢復時，重新執行安裝程式即可（安裝程式會先解除停用再啟動）；或手動執行 `sudo launchctl enable gui/$(id -u user)/com.example.chrome-kiosk` 後重新登入。
+
+#### 確認目前狀態
+
+```sh
+launchctl print gui/$(id -u user)/com.example.chrome-kiosk | grep -E "state|pid"   # 是否正在執行
+launchctl print-disabled gui/$(id -u user) | grep chrome-kiosk                     # 是否被停用
+```
+
+第一行若顯示 `Could not find service`，表示目前沒有載入（已停止）。
 
 ### 手動執行（測試用）
 
