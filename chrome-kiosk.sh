@@ -1,6 +1,33 @@
 #!/bin/bash
 
-# 要開啟的網址：可直接修改這一行，或用第一個參數覆寫
+CANVA_DESIGN_RE='^https://(www\.)?canva\.com/design/'
+RESOLVE_ATTEMPTS="${RESOLVE_ATTEMPTS:-12}"   # 展開短網址失敗時的重試次數（每次間隔 5 秒）
+
+# 把 Canva 網址整理成 kiosk 要用的形式：
+#   1. 展開短網址（公開檢視連結複製到的是 canva.link/…，部分地區網域不同），一路跟著轉址直到 canva.com/design/
+#   2. 把 /view（要自己翻頁）改成 /watch（像影片一樣自動播放，播放器上有時間可偵測長度）
+# 成功時輸出整理後的網址；網路不通、短網址打錯或連結已刪除時回傳 1。
+resolve_canva_url() {
+    local url="$1" next
+    local hop
+    for hop in 1 2 3 4 5; do
+        [[ "$url" =~ $CANVA_DESIGN_RE ]] && break
+        next="$(curl -s -o /dev/null --max-time 10 -w '%{redirect_url}' -- "$url")" || return 1
+        [[ -n "$next" ]] || return 1
+        url="$next"
+    done
+    [[ "$url" =~ $CANVA_DESIGN_RE ]] || return 1
+    printf '%s\n' "$url" | sed -E 's~^(https://(www\.)?canva\.com/design/[^/?#]+/[^/?#]+)/view([?#]|$)~\1/watch\3~'
+}
+
+# 供安裝程式檢查網址用：只輸出整理後的網址，不啟動 kiosk。
+if [[ "${1:-}" == "--resolve-only" ]]; then
+    resolve_canva_url "${2:-}"
+    exit
+fi
+
+# 要開啟的網址：可直接修改這一行，或用第一個參數覆寫。
+# 可以是 Canva 的短網址（canva.link/…）或完整網址，/view 會自動改成 /watch。
 URL="${1:-https://www.canva.com/design/DAHOJXEvb9o/x3tAF2xvq3cvdreokETpfA/watch?utm_content=DAHOJXEvb9o&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=he38cf48331}"
 DEFAULT_REFRESH_SECONDS="${2:-200}"
 POST_PLAY_DELAY_SECONDS=5
@@ -37,6 +64,25 @@ if /usr/bin/nc -z 127.0.0.1 "$KIOSK_CDP_PORT" 2>/dev/null; then
     exit 1
 fi
 
+# 展開短網址並改成 /watch。開機時網路可能還沒好，所以失敗會重試（預設最多約 60 秒）。
+PLAY_URL=""
+for (( attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++ )); do
+    PLAY_URL="$(resolve_canva_url "$URL")" && break
+    PLAY_URL=""
+    (( attempt < RESOLVE_ATTEMPTS )) && sleep 5
+done
+if [[ -n "$PLAY_URL" ]]; then
+    [[ "$PLAY_URL" != "$URL" ]] && echo "播放網址：$PLAY_URL"
+else
+    echo "無法展開播放網址（網路未連線、短網址打錯或連結已刪除），直接開啟原網址：$URL" >&2
+    PLAY_URL="$URL"
+fi
+case "$PLAY_URL" in
+    */edit|*/edit\?*)
+        echo "警告：這是 Canva 的編輯連結，需要登入才能開啟。請改用「分享 → 公開檢視連結」。" >&2
+        ;;
+esac
+
 # 使用獨立設定檔啟動真正的 kiosk 模式，隱藏網址列、分頁列和工具列。
 # autoplay-policy 允許 Canva 簡報中的影音與動畫不需手動點擊即可播放。
 "$CHROME_BINARY" \
@@ -48,7 +94,7 @@ fi
     --autoplay-policy=no-user-gesture-required \
     --remote-debugging-address=127.0.0.1 \
     --remote-debugging-port="$KIOSK_CDP_PORT" \
-    "$URL" >>"$LOG_DIR/chrome.log" 2>&1 &
+    "$PLAY_URL" >>"$LOG_DIR/chrome.log" 2>&1 &
 CHROME_PID=$!
 SLEEP_PID=""
 

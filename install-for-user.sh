@@ -58,6 +58,17 @@ chown "$TARGET_USER:$TARGET_GROUP" "$TARGET_PLIST"
 chmod 644 "$TARGET_PLIST"
 plutil -lint "$TARGET_PLIST" >/dev/null
 
+# 顯示實際會播放的網址（短網址會被展開、/view 會改成 /watch），讓打錯或已刪除的連結在安裝時就被發現。
+PLIST_URL="$(plutil -extract ProgramArguments.1 raw "$TARGET_PLIST" 2>/dev/null || true)"
+if [[ -n "$PLIST_URL" ]]; then
+    if RESOLVED_URL="$(/bin/bash "$SOURCE_DIR/chrome-kiosk.sh" --resolve-only "$PLIST_URL")"; then
+        echo "播放網址：$RESOLVED_URL"
+    else
+        echo "警告：目前無法展開播放網址：$PLIST_URL" >&2
+        echo "      請確認網路已連線、短網址正確，且 Canva 的公開檢視連結沒有被刪除。kiosk 啟動時會再試一次。" >&2
+    fi
+fi
+
 # 從 repo 裡的 AppleScript 原始碼編譯 Player App。
 # 注意：重新編譯後 App 的簽章會改變，必須重新授權（見安裝完成後的提示）。
 rm -rf "$TARGET_PLAYER_APP"

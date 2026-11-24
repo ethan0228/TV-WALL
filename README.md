@@ -7,6 +7,7 @@
 - [運作方式](#運作方式)
 - [系統需求](#系統需求)
 - [快速開始](#快速開始)
+- [準備 Canva 播放網址](#準備-canva-播放網址)
 - [系統設定](#系統設定)
 - [日常操作](#日常操作)
 - [記錄檔](#記錄檔)
@@ -18,7 +19,7 @@
 ## 運作方式
 
 1. 使用者登入時，launchd 依 LaunchAgent 啟動 `chrome-kiosk.sh`。
-2. 腳本以獨立、無痕的 Chrome 設定檔開啟 kiosk 模式（隱藏網址列、分頁列和工具列），載入 Canva 的 `/watch` 播放網址。
+2. 腳本先整理播放網址（展開 `canva.link` 短網址、把 `/view` 改成 `/watch`），再以獨立、無痕的 Chrome 設定檔開啟 kiosk 模式（隱藏網址列、分頁列和工具列）。
 3. 透過 Chrome 遠端除錯介面（CDP）讀取播放器上的總長度；偵測不到時改用備援秒數（預設 200 秒）。
 4. `Chrome Kiosk Player.app` 確認全螢幕後按空白鍵開始播放。
 5. 空白鍵是「播放／暫停」切換，所以腳本會再比對播放器時間是否在前進：確定是暫停才透過 CDP 補按一次；無法判斷時不動作，避免把播放中的簡報暫停。
@@ -34,7 +35,7 @@
 | Ruby | 使用 macOS 內建的 `/usr/bin/ruby`，不需另外安裝 |
 | 權限 | 執行安裝的帳號需要管理者權限（`sudo`） |
 | 播放帳號 | 建議另建一個專門播放的一般帳號；需先登入過一次 |
-| Canva | 簡報的「分享 → 公開檢視連結」產生的 `/watch` 網址 |
+| Canva | 簡報的「分享 → 公開檢視連結」，見[準備 Canva 播放網址](#準備-canva-播放網址) |
 
 ## 快速開始
 
@@ -54,13 +55,13 @@ cd TV-WALL
 ```xml
 <array>
     <string>__TARGET_HOME__/Library/Application Support/Chrome Kiosk/chrome-kiosk.sh</string>
-    <string>https://www.canva.com/design/XXXXXXXX/YYYYYYYY/watch</string>  <!-- Canva 播放網址 -->
-    <string>200</string>                                                     <!-- 偵測失敗時的備援秒數（至少 15） -->
+    <string>https://canva.link/xxxxxxxxxxxxxxx</string>  <!-- Canva 公開檢視連結（短網址或完整網址都可以） -->
+    <string>200</string>                                 <!-- 偵測失敗時的備援秒數（至少 15） -->
 </array>
 ```
 
-- 網址必須是 Canva 的 `/watch` 連結。
-- plist 是 XML，網址裡的 `&` 必須寫成 `&amp;`。
+- 網址怎麼產生，見下一節[準備 Canva 播放網址](#準備-canva-播放網址)。直接貼上 Canva 複製到的短網址即可。
+- plist 是 XML，完整網址裡的 `&` 必須寫成 `&amp;`（短網址沒有 `&`，不必處理）。
 - 第一行的 `__TARGET_HOME__` 不要改，安裝時會自動換成播放帳號的家目錄。
 
 ### 3. 執行安裝
@@ -79,9 +80,57 @@ sudo ./install-for-user.sh user
 
 （以上 `~` 都是指播放帳號的家目錄。）
 
+安裝程式會顯示實際會播放的網址（`播放網址：https://www.canva.com/design/…/watch?…`）。若顯示「無法展開播放網址」，請檢查網路與短網址是否正確。
+
 ### 4. 完成系統設定
 
-照下一節[系統設定](#系統設定)逐項設定，特別是授權 Player App，否則無法自動開始播放。
+照[系統設定](#系統設定)逐項設定，特別是授權 Player App，否則無法自動開始播放。
+
+## 準備 Canva 播放網址
+
+### 1. 設定每頁的播放秒數
+
+在 Canva 編輯器選取頁面，按浮動工具列上的**時鐘圖示（Edit timing）**設定秒數；打開「Apply to all pages」可一次套用到所有頁面（會覆蓋個別設定過的秒數）。
+
+- 只有文字和圖片的頁面預設 5 秒。
+- 有影片的頁面會跟影片一樣長。
+
+腳本會讀取播放器上的總長度，播完才重新載入，所以這裡的設定就是電視牆每一輪播放的長度。
+
+### 2. 建立公開檢視連結
+
+**分享 → 公開檢視連結 → 建立公開檢視連結**，取一個名稱後按「儲存並複製」。完成後連結上方會顯示 **Live**。
+
+Canva 複製到的是短網址（例如 `canva.link/abc123xyz`），**直接貼進 plist 即可**。kiosk 啟動時會：
+
+1. 跟著轉址展開成完整網址（`https://www.canva.com/design/…/view?…`）；
+2. 把 `/view`（觀眾要自己翻頁）改成 `/watch`（像影片一樣自動播放，播放器上有時間可偵測長度）。
+
+開機時網路可能還沒連上，展開失敗會每 5 秒重試，最多約 60 秒；仍失敗時會直接開啟原網址並記錄在 `kiosk-error.log`。
+
+想先確認會播放哪個網址，可在 repo 資料夾執行：
+
+```sh
+/bin/bash chrome-kiosk.sh --resolve-only https://canva.link/xxxxxxxxxxxxxxx
+```
+
+### 3. 用無痕視窗確認
+
+在**沒有登入 Canva** 的無痕視窗開啟上一步輸出的網址，確認會自動播放、看得到時間。kiosk 使用無痕設定檔、不會登入 Canva，無痕視窗打得開，電視牆才打得開。
+
+### 不要使用的連結
+
+| 連結 | 問題 |
+| --- | --- |
+| 編輯連結（`/edit`） | 需要登入 Canva，kiosk 打不開；腳本會在 `kiosk-error.log` 警告 |
+| 簡報模式的「Autoplay」 | 要在登入的編輯器中啟動，無法當成網址使用 |
+
+### 公開檢視連結的特性
+
+- **修改簡報不必重新安裝。** 連結是即時的，腳本每一輪都會重新載入，下一輪就會播出新版本。
+- **刪除連結即可停止分享。** 之後重新建立的連結是新網址，要更新 plist 並重新安裝。
+- **可以看觀看數據。** 在「分享 → 公開檢視連結 → Visitors」查看。付費方案可建立多個連結，每面電視牆用一個，就能分別統計。
+- **分享前先整理內容。** 把隱藏頁面、演講者備註等不想公開的內容移除，或另存一份副本再分享。
 
 ## 系統設定
 
@@ -150,7 +199,7 @@ sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk
 ### 手動執行（測試用）
 
 ```sh
-"$HOME/Library/Application Support/Chrome Kiosk/chrome-kiosk.sh" "https://www.canva.com/design/.../watch" 60
+"$HOME/Library/Application Support/Chrome Kiosk/chrome-kiosk.sh" "https://canva.link/xxxxxxxxxxxxxxx" 60
 ```
 
 在終端機按 `Control + C` 會停止腳本並關閉 kiosk Chrome。
@@ -161,13 +210,14 @@ sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk
 
 | 檔案 | 內容 |
 | --- | --- |
-| `kiosk.log` | 偵測到的簡報長度、播放狀態、重新載入時間 |
+| `kiosk.log` | 實際播放網址、偵測到的簡報長度、播放狀態、重新載入時間 |
 | `kiosk-error.log` | 錯誤訊息 |
 | `chrome.log` | Chrome 的執行訊息 |
 
 正常運作時，`kiosk.log` 大致如下：
 
 ```text
+播放網址：https://www.canva.com/design/…/watch?…
 偵測到簡報長度：1011 秒
 播放狀態：playing
 1016 秒後重新載入並重新偵測。
@@ -185,6 +235,9 @@ sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk
 | `Bootstrap failed: 5: Input/output error` | 服務曾被 `launchctl disable` 停用，或舊程序還沒結束。新版安裝程式會自動處理；若仍出現，執行 `launchctl print-disabled gui/$(id -u user) \| grep kiosk` 確認，或登出再登入播放帳號。 |
 | `找不到使用者：…` | 請用帳號的**短名稱**（在該帳號下執行 `whoami` 查看），不是全名。 |
 | `…的家目錄尚未建立` | 先用播放帳號登入一次，再安裝。 |
+| `無法展開播放網址` | 網路未連線、短網址打錯，或 Canva 的公開檢視連結已被刪除。用 `/bin/bash chrome-kiosk.sh --resolve-only <網址>` 測試；連結刪除後要重新建立並更新 plist。 |
+| 簡報要自己點才會換頁、播完沒有重新載入 | 開到的是 `/view` 或其他檢視畫面。確認 `kiosk.log` 的「播放網址」結尾是 `/watch`；若出現「無法展開播放網址」，見上一列。 |
+| `警告：這是 Canva 的編輯連結` | plist 裡放的是 `/edit` 編輯連結，改用[公開檢視連結](#2-建立公開檢視連結)。 |
 | Chrome 開了但簡報沒有開始播放 | 檢查 `kiosk.log` 的播放狀態，並確認 Player App 的[兩項授權](#必要授權-player-app)；重新安裝後要先移除舊項目再加入。 |
 | 畫面一直重新開啟 Chrome | 查看 `kiosk-error.log`。常見原因是除錯埠被佔用：可在 plist 的 `EnvironmentVariables` 設定 `KIOSK_CDP_PORT` 換一個埠。 |
 | 螢幕過一段時間就黑了 | 照[建議設定](#建議讓電視牆無人看管也能持續運作)把「閒置時關閉顯示器」設為「永不」。 |
@@ -208,7 +261,7 @@ sudo ./uninstall-for-user.sh user             # 實際移除
 | --- | --- |
 | `install-for-user.sh` | 安裝程式：`sudo ./install-for-user.sh [帳號]` |
 | `uninstall-for-user.sh` | 移除程式：`sudo ./uninstall-for-user.sh [--dry-run] [--keep-logs] [帳號]` |
-| `chrome-kiosk.sh` | 主腳本：啟動 kiosk Chrome、偵測長度、播放、定時重新載入 |
+| `chrome-kiosk.sh` | 主腳本：整理播放網址、啟動 kiosk Chrome、偵測長度、播放、定時重新載入；`--resolve-only <網址>` 只輸出整理後的網址 |
 | `kiosk-cdp.rb` | 透過 Chrome 遠端除錯介面操作 Canva 頁面：`duration`、`state`、`press-space`、`reload` |
 | `Chrome Kiosk Player.applescript` | Player App 原始碼：確認全螢幕並按空白鍵開始播放 |
 | `com.example.chrome-kiosk.plist` | LaunchAgent 範本：播放網址、備援秒數、記錄檔位置 |
