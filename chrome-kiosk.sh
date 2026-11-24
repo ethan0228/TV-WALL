@@ -40,7 +40,9 @@ INSTALL_DIR="${HOME}/Library/Application Support/Chrome Kiosk"
 # Chrome 設定檔放在子資料夾，不和腳本混在一起。
 KIOSK_PROFILE="${INSTALL_DIR}/profile"
 PLAYER_APP="${HOME}/Applications/Chrome Kiosk Player.app"
-PLAYER_TIMEOUT_SECONDS="${PLAYER_TIMEOUT_SECONDS:-30}"   # Player App 正常約 10 秒結束；超過就強制關閉
+PLAYER_TIMEOUT_SECONDS="${PLAYER_TIMEOUT_SECONDS:-30}"
+# 播放器出現後先等一下再按鍵／點擊：按鈕可能比播放器真正準備好更早出現，太早點會沒有反應。
+PLAY_SETTLE_SECONDS="${PLAY_SETTLE_SECONDS:-3}"   # Player App 正常約 10 秒結束；超過就強制關閉
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CDP_HELPER="$SCRIPT_DIR/kiosk-cdp.rb"
 # 記錄檔放在各使用者自己的 ~/Library/Logs，避免多個帳號搶同一個 /tmp 檔案。
@@ -204,6 +206,10 @@ while true; do
         log "無法偵測簡報長度，使用預設時間：${DEFAULT_REFRESH_SECONDS} 秒"
     fi
 
+    if (( PLAY_SETTLE_SECONDS > 0 )); then
+        log "等待 ${PLAY_SETTLE_SECONDS} 秒讓播放器準備好。"
+        watched_sleep "$PLAY_SETTLE_SECONDS"
+    fi
     ensure_chrome_alive
     start_playback
     ensure_chrome_alive
