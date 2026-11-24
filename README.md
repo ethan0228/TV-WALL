@@ -21,8 +21,8 @@
 1. 使用者登入時，launchd 依 LaunchAgent 啟動 `chrome-kiosk.sh`。
 2. 腳本先整理播放網址（展開 `canva.link` 短網址、把 `/view` 改成 `/watch`），再以獨立、無痕的 Chrome 設定檔開啟 kiosk 模式（隱藏網址列、分頁列和工具列）。
 3. 透過 Chrome 遠端除錯介面（CDP）讀取播放器上的總長度；偵測不到時改用備援秒數（預設 200 秒）。
-4. `Chrome Kiosk Player.app` 確認全螢幕後按空白鍵開始播放。
-5. 空白鍵是「播放／暫停」切換，所以腳本會再比對播放器時間是否在前進：確定是暫停才透過 CDP 補按一次；無法判斷時不動作，避免把播放中的簡報暫停。
+4. `Chrome Kiosk Player.app` 確認全螢幕後按空白鍵。
+5. Canva 的 `/watch` 播放器載入後**不會自動播放**，而空白鍵需要「控制電腦」權限和鍵盤焦點，不一定送得到。所以腳本會透過 CDP 觀察播放器時間：已在前進就不動作；沒有前進就直接點播放器上的「播放」鈕，並確認時間開始前進（最多試 3 次，仍失敗才改送空白鍵）。以狀態為準，不會把播放中的簡報暫停。
 6. 等待「簡報總長度＋5 秒」後，透過 CDP 重新載入頁面，回到第 3 步。
 7. Chrome 當掉或被關閉時，腳本會結束，由 launchd 自動重新啟動整套流程。
 
@@ -149,7 +149,7 @@ Canva 複製到的是短網址（例如 `canva.link/abc123xyz`），**直接貼�
 
 - **每次重新安裝都要重新授權。** 安裝程式會重新編譯 App，簽章因此改變，清單上的舊項目雖然還顯示「開啟」，但已經失效。請先用「－」移除舊項目，再重新加入。
 - 「自動化」授權是每個帳號各自的。無人看管時沒人按提示，就會一直卡在那裡，所以第一次一定要有人在現場確認。
-- 授權沒完成時，腳本仍會用 CDP 補送播放鍵，多半還是能播放，但全螢幕確認與第一次的播放鍵會失效。
+- 授權沒完成時，腳本仍會透過 CDP 點「播放」鈕開始播放，但 Player App 的全螢幕確認會失效。
 
 ### 建議：讓電視牆無人看管也能持續運作
 
@@ -219,13 +219,14 @@ sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk
 ```text
 播放網址：https://www.canva.com/design/…/watch?…
 偵測到簡報長度：1011 秒
-播放狀態：playing
+播放狀態：已點「播放」開始播放
 1016 秒後重新載入並重新偵測。
 ```
 
-- `播放狀態：playing`：已在播放。
-- `播放狀態：paused`：Player App 的空白鍵沒有讓簡報開始播放，腳本已透過 CDP 補按。每一輪都出現時，通常表示 Player App 的授權沒有生效。
-- `播放狀態：unknown`：無法從頁面判斷，腳本不做任何動作。
+- `播放狀態：已在播放`：Player App 的空白鍵已讓簡報開始播放，腳本不做任何動作。
+- `播放狀態：已點「播放」開始播放`：空白鍵沒有作用（多半是 Player App 沒有授權），腳本已點「播放」鈕並確認開始播放。不影響運作。
+- `播放狀態：已點「播放」（頁面上沒有時間可確認）`：已點「播放」鈕，但頁面沒有播放時間，無法確認。
+- `播放狀態：無法用「播放」鈕開始（no-button 或 failed），改送空白鍵。`：找不到「播放」鈕或點了沒反應，記在 `kiosk-error.log`，後面會再記下送出空白鍵後的狀態（`playing`／`paused`／`unknown`）。
 
 ## 疑難排解
 
@@ -238,7 +239,7 @@ sudo launchctl bootout gui/$(id -u user)/com.example.chrome-kiosk
 | `無法展開播放網址` | 網路未連線、短網址打錯，或 Canva 的公開檢視連結已被刪除。用 `/bin/bash chrome-kiosk.sh --resolve-only <網址>` 測試；連結刪除後要重新建立並更新 plist。 |
 | 簡報要自己點才會換頁、播完沒有重新載入 | 開到的是 `/view` 或其他檢視畫面。確認 `kiosk.log` 的「播放網址」結尾是 `/watch`；若出現「無法展開播放網址」，見上一列。 |
 | `警告：這是 Canva 的編輯連結` | plist 裡放的是 `/edit` 編輯連結，改用[公開檢視連結](#2-建立公開檢視連結)。 |
-| Chrome 開了但簡報沒有開始播放 | 檢查 `kiosk.log` 的播放狀態，並確認 Player App 的[兩項授權](#必要授權-player-app)；重新安裝後要先移除舊項目再加入。 |
+| Chrome 開了但簡報沒有開始播放 | 查看 `kiosk.log` 和 `kiosk-error.log` 的「播放狀態」。出現 `no-button` 表示頁面上找不到「播放」鈕：確認網址是 `/watch` 的公開檢視連結。出現 `failed` 表示點了沒反應：在無痕視窗開啟同一網址，看手動按播放是否正常。 |
 | 畫面一直重新開啟 Chrome | 查看 `kiosk-error.log`。常見原因是除錯埠被佔用：可在 plist 的 `EnvironmentVariables` 設定 `KIOSK_CDP_PORT` 換一個埠。 |
 | 螢幕過一段時間就黑了 | 照[建議設定](#建議讓電視牆無人看管也能持續運作)把「閒置時關閉顯示器」設為「永不」。 |
 | 停電或重開機後停在登入畫面 | 設定「自動登入為」播放帳號（需關閉檔案保險箱）。 |
@@ -262,7 +263,7 @@ sudo ./uninstall-for-user.sh user             # 實際移除
 | `install-for-user.sh` | 安裝程式：`sudo ./install-for-user.sh [帳號]` |
 | `uninstall-for-user.sh` | 移除程式：`sudo ./uninstall-for-user.sh [--dry-run] [--keep-logs] [帳號]` |
 | `chrome-kiosk.sh` | 主腳本：整理播放網址、啟動 kiosk Chrome、偵測長度、播放、定時重新載入；`--resolve-only <網址>` 只輸出整理後的網址 |
-| `kiosk-cdp.rb` | 透過 Chrome 遠端除錯介面操作 Canva 頁面：`duration`、`state`、`press-space`、`reload` |
+| `kiosk-cdp.rb` | 透過 Chrome 遠端除錯介面操作 Canva 頁面：`duration`、`play`、`state`、`press-space`、`reload` |
 | `Chrome Kiosk Player.applescript` | Player App 原始碼：確認全螢幕並按空白鍵開始播放 |
 | `com.example.chrome-kiosk.plist` | LaunchAgent 範本：播放網址、備援秒數、記錄檔位置 |
 

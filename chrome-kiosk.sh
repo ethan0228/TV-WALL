@@ -129,19 +129,27 @@ ensure_chrome_alive() {
 }
 
 start_playback() {
-    # Player App 會等待頁面載入 5 秒、確認全螢幕，再送出播放鍵。
-    # -W 會等到 App 送出播放鍵並退出，之後才開始計算播放時間。
+    # Player App 會等待頁面載入 5 秒、確認全螢幕，再送出播放鍵（需要「控制電腦」權限）。
+    # -W 會等到 App 結束，之後才開始計算播放時間。
     open -W -gja "$PLAYER_APP"
 
-    # 空白鍵是「播放／暫停」切換：若 Canva 本來就在自動播放，剛才那一下反而會暫停。
-    # 確定是暫停狀態才再按一次；無法判斷（unknown）時不動作，避免把播放中的簡報暫停。
-    local state
-    state="$(cdp state)" || state="unknown"
-    echo "播放狀態：$state"
-    if [[ "$state" == "paused" ]]; then
-        echo "簡報處於暫停狀態，再送一次播放鍵。"
-        cdp press-space || echo "送出播放鍵失敗。" >&2
-    fi
+    # Canva 的 /watch 播放器不會自動播放，而 Player App 的空白鍵需要「控制電腦」權限和鍵盤焦點，不一定送得到。
+    # 所以再透過 CDP 確認：沒在播就直接點播放器的「播放」鈕，並確認時間開始前進（以狀態為準，不會把播放中的簡報暫停）。
+    local result state
+    result="$(cdp play)" || result="failed"
+    case "$result" in
+        already-playing) echo "播放狀態：已在播放" ;;
+        started)         echo "播放狀態：已點「播放」開始播放" ;;
+        clicked)         echo "播放狀態：已點「播放」（頁面上沒有時間可確認）" ;;
+        *)
+            # 找不到「播放」鈕或點了沒反應：最後再試一次空白鍵。
+            echo "播放狀態：無法用「播放」鈕開始（${result}），改送空白鍵。" >&2
+            cdp press-space || echo "送出空白鍵失敗。" >&2
+            state="$(cdp state)" || state="unknown"
+            echo "播放狀態：$state"
+            [[ "$state" == "playing" ]] || echo "簡報仍未開始播放，請查看 README 的疑難排解。" >&2
+            ;;
+    esac
 }
 
 while true; do

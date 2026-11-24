@@ -5,6 +5,8 @@
 #
 # 用法：
 #   kiosk-cdp.rb duration [等待秒數]   輸出簡報總長度（秒）；偵測不到時 exit 1
+#   kiosk-cdp.rb play                 確保簡報在播放：沒在播就點播放器的「播放」鈕並確認時間開始前進
+#                                     輸出 already-playing / started / clicked / no-button / failed
 #   kiosk-cdp.rb state                輸出 playing / paused / unknown
 #   kiosk-cdp.rb press-space          在 Canva 頁面送出空白鍵（播放／暫停切換）
 #   kiosk-cdp.rb reload               重新載入 Canva 頁面
@@ -20,14 +22,14 @@ PORT = Integer(ENV.fetch("KIOSK_CDP_PORT", "9222"))
 COMMAND = ARGV[0].to_s
 WAIT_SECONDS = (ARGV[1] || "15").to_i
 
-unless %w[duration state press-space reload].include?(COMMAND)
-  warn "用法：#{File.basename($PROGRAM_NAME)} duration [秒] | state | press-space | reload"
+unless %w[duration play state press-space reload].include?(COMMAND)
+  warn "用法：#{File.basename($PROGRAM_NAME)} duration [秒] | play | state | press-space | reload"
   exit 2
 end
 
 # 看門狗：Chrome 沒回應（例如頁面在讀取途中重新載入）時直接以失敗結束，
 # 避免主迴圈永遠卡住。
-WATCHDOG_SECONDS = COMMAND == "duration" ? WAIT_SECONDS * 2 + 15 : 20
+WATCHDOG_SECONDS = { "duration" => WAIT_SECONDS * 2 + 15, "play" => 40 }.fetch(COMMAND, 20)
 Thread.new do
   sleep WATCHDOG_SECONDS
   warn "CDP 操作逾時（#{COMMAND}）"
@@ -162,6 +164,41 @@ DURATION_JS = <<~JAVASCRIPT
   })
 JAVASCRIPT
 
+# 確保簡報在播放（以狀態為準，不是切換）：
+# Canva 的 /watch 播放器載入後不會自動播放；空白鍵是「播放／暫停」切換，而且要頁面有鍵盤焦點才收得到。
+# 直接點播放器上可見的「播放」鈕不需要焦點，也不需要「控制電腦」權限。
+# 先觀察 2.5 秒：時間有前進就不動作；否則點「播放」並確認時間開始前進，最多試 3 次。
+PLAY_JS = <<~JAVASCRIPT
+  new Promise(async (resolve) => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const PLAY_LABELS = ['播放', 'Play', '再生', '재생', 'Reproducir', 'Lire', 'Abspielen', 'Riproduci', 'Reproduzir'];
+    const visible = (el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    const times = () => Array.from(document.querySelectorAll('time')).map((item) => item.textContent.trim());
+    const videoPlaying = () => Array.from(document.querySelectorAll('video'))
+      .some((video) => !video.paused && !video.ended && video.readyState > 2);
+    const advancing = async () => {
+      const before = times().join('|');
+      await sleep(2500);
+      return videoPlaying() || before !== times().join('|');
+    };
+    if (await advancing()) return resolve('already-playing');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const button = Array.from(document.querySelectorAll('button[aria-label]'))
+        .filter(visible)
+        .find((item) => PLAY_LABELS.includes(item.getAttribute('aria-label')));
+      if (!button) return resolve('no-button');
+      button.click();
+      // 頁面上沒有時間也沒有影片時無法確認，點過就算數。
+      if (!times().length && !document.querySelector('video')) return resolve('clicked');
+      if (await advancing()) return resolve('started');
+    }
+    resolve('failed');
+  })
+JAVASCRIPT
+
 # 判斷是否正在播放：比較 2.5 秒前後播放器上的時間文字。
 # 時間有變化或有影片在播 → playing；有「目前時間＋總長度」兩個以上時間但都沒動 → paused；
 # 其餘無法確定 → unknown（呼叫端遇到 unknown 不做任何動作，以免誤把播放中的簡報暫停）。
@@ -190,6 +227,8 @@ begin
     value = evaluate(socket, DURATION_JS)
     exit 1 unless value.is_a?(Numeric) && value.positive?
     puts value.ceil
+  when "play"
+    puts evaluate(socket, PLAY_JS) || "failed"
   when "state"
     puts evaluate(socket, STATE_JS) || "unknown"
   when "press-space"
