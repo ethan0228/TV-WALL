@@ -92,9 +92,14 @@ esac
 
 # 使用獨立設定檔啟動真正的 kiosk 模式，隱藏網址列、分頁列和工具列。
 # autoplay-policy 允許 Canva 簡報中的影音與動畫不需手動點擊即可播放。
+# 三個 disable-background* 參數：螢幕關閉、被其他視窗蓋住時，Chrome 預設會把頁面視為隱藏
+# （visibilityState=hidden）並降速；Canva 在隱藏狀態下按「播放」不會開始，簡報就停在第一頁。
 "$CHROME_BINARY" \
     --user-data-dir="$KIOSK_PROFILE" \
     --kiosk \
+    --disable-backgrounding-occluded-windows \
+    --disable-renderer-backgrounding \
+    --disable-background-timer-throttling \
     --no-first-run \
     --incognito \
     --disable-session-crashed-bubble \
@@ -105,10 +110,20 @@ esac
 CHROME_PID=$!
 SLEEP_PID=""
 
+# Chrome 執行期間不讓顯示器與系統閒置睡眠（也不會啟動螢幕保護程式）。
+# 系統設定沒調好時，螢幕一關頁面就變成隱藏，之後每一輪都無法開始播放。
+# -w 讓 caffeinate 在 Chrome 結束時自動結束。
+CAFFEINATE_PID=""
+if command -v caffeinate >/dev/null 2>&1; then
+    caffeinate -d -i -s -w "$CHROME_PID" &
+    CAFFEINATE_PID=$!
+fi
+
 # 結束腳本時，同步關閉這次啟動的 kiosk Chrome，避免背景程序繼續輸出。
 cleanup() {
     trap - EXIT
     [[ -n "$SLEEP_PID" ]] && kill "$SLEEP_PID" 2>/dev/null
+    [[ -n "$CAFFEINATE_PID" ]] && kill "$CAFFEINATE_PID" 2>/dev/null
     if kill -0 "$CHROME_PID" 2>/dev/null; then
         kill "$CHROME_PID"
         wait "$CHROME_PID" 2>/dev/null
@@ -154,7 +169,14 @@ watched_sleep() {
     done
 }
 
+# 螢幕已經關閉時先把它喚醒（等同有人動了滑鼠），否則頁面仍是隱藏，點「播放」沒有作用。
+wake_display() {
+    command -v caffeinate >/dev/null 2>&1 || return 0
+    caffeinate -u -t 2 >/dev/null 2>&1 || true
+}
+
 start_playback() {
+    wake_display
     # Player App 會等待頁面載入 5 秒、把 Chrome 帶到最前面並確認全螢幕，再按空白鍵（需要「控制電腦」權限）。
     # 用 -W 等它結束，但最多等 PLAYER_TIMEOUT_SECONDS 秒：第一次執行時的權限提示（或任何對話框）
     # 會讓 App 停住不結束，不能讓整個播放循環跟著卡住。
